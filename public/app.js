@@ -38,6 +38,7 @@ const App = {
         if (data.presentationState) Object.assign(this.presentationState, data.presentationState);
         if (data.settingsState) Object.assign(this.settingsState, data.settingsState);
         if (data.aiResults) this.aiResults = data.aiResults;
+        if (data.reportTimestamps) this.reportTimestamps = data.reportTimestamps;
       }
     } catch (e) { console.error('Error loading from storage:', e); }
   },
@@ -49,6 +50,7 @@ const App = {
         presentationState: this.presentationState,
         settingsState: this.settingsState,
         aiResults: this.aiResults,
+        reportTimestamps: this.reportTimestamps,
       }));
     } catch (e) { console.error('Error saving to storage:', e); }
   },
@@ -474,6 +476,7 @@ const App = {
   aiLoading: {},
   aiError: {},
   analyzedDomains: {},
+  reportTimestamps: {},
 
   async callAI(endpoint, body) {
     const ss = this.settingsState;
@@ -490,6 +493,7 @@ const App = {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Errore sconosciuto');
       this.aiResults[endpoint] = data;
+      this.reportTimestamps[endpoint] = new Date().toISOString();
       this.aiLoading[endpoint] = false;
       this.saveToStorage();
       this.renderApp();
@@ -1084,10 +1088,15 @@ const App = {
 
     const reportToggles = reports.map(r => {
       const data = this.aiResults[r.aiKey];
+      const ts = this.reportTimestamps[r.aiKey];
+      const tsFormatted = ts ? new Date(ts).toLocaleString('it-IT', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
       return `<label class="pres-toggle-row">
         <input type="checkbox" ${ps.selectedReports[r.key] ? 'checked' : ''} onchange="App.toggleReportSelection('${r.key}')" />
         <span class="pres-toggle-label">${r.icon} ${r.label}</span>
-        <span class="pres-toggle-status ${data?'pres-has-data':''}">${data?(ps.selectedReports[r.key]?'INCLUSO':'ESCLUSO'):'NO DATI'}</span>
+        <div class="pres-toggle-info">
+          ${tsFormatted ? `<span class="pres-toggle-date">${tsFormatted}</span>` : ''}
+          <span class="pres-toggle-status ${data?'pres-has-data':''}">${data?(ps.selectedReports[r.key]?'INCLUSO':'ESCLUSO'):'NO DATI'}</span>
+        </div>
       </label>`;
     }).join('');
 
