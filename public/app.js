@@ -803,7 +803,7 @@ const App = {
       `;
     } else if (type === 'aiOverview') {
       html = `
-        ${data.keywords?`<table class="pres-table"><thead><tr><th>Keyword</th><th>Volume</th><th>Win %</th><th>Status</th></tr></thead><tbody>${data.keywords.map(k=>`<tr><td>${k.keyword}</td><td>${k.volume}</td><td>${k.winProbability}%</td><td>${k.status}</td></tr>`).join('')}</tbody></table>`:''}
+        ${data.keywords?`<table class="pres-table"><thead><tr><th>Keyword Strategica</th><th>Ranking</th><th>Win Prob.</th><th>Volume</th></tr></thead><tbody>${data.keywords.map(k=>`<tr><td>${k.keyword}</td><td style="text-align:center">${k.ranking||'-'}</td><td style="text-align:center">${k.winProbability}%</td><td style="text-align:center">${k.volume}</td></tr>`).join('')}</tbody></table>`:''}
         ${data.contentGaps?`<div class="pres-sub"><strong>Content Gap:</strong><ul>${data.contentGaps.map(g=>`<li>${g}</li>`).join('')}</ul></div>`:''}
         ${data.fixes?`<div class="pres-sub"><strong>Actionable Fixes:</strong><ol>${data.fixes.map(f=>`<li>${f}</li>`).join('')}</ol></div>`:''}
       `;
@@ -1223,8 +1223,8 @@ const App = {
         </div>
         <div class="card fade-in fade-in-delay-2">
           <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.search}</div><div><h3>Analisi Keyword &amp; Win Probability</h3><p class="card-desc">Keyword che attivano risposte AI</p></div></div>
-          ${loading?LS:`<table class="data-table"><thead><tr><th style="text-align:left">Keyword</th><th style="text-align:center">Volume</th><th style="text-align:center">Win Probability</th><th style="text-align:center">Status</th></tr></thead>
-          <tbody>${r?.keywords?.length?r.keywords.map(k=>`<tr><td style="font-weight:500">${k.keyword}</td><td style="text-align:center"><span class="volume-badge">${k.volume}</span></td><td style="text-align:center"><span class="score-inline">${k.winProbability}%</span></td><td style="text-align:center"><span class="status-dot ${k.status==='Presente'?'dot-green':k.status==='Parziale'?'dot-yellow':'dot-red'}"></span>${k.status}</td></tr>`).join(''):'<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia l\'analisi per le keyword.</td></tr>'}</tbody></table>`}
+          ${loading?LS:`<table class="data-table"><thead><tr><th style="text-align:left">Keyword Strategica</th><th style="text-align:center">Ranking</th><th style="text-align:center">Win Prob.</th><th style="text-align:center">Volume</th></tr></thead>
+          <tbody>${r?.keywords?.length?r.keywords.map(k=>`<tr><td style="font-weight:500">${k.keyword}</td><td style="text-align:center"><strong>${k.ranking||'-'}</strong></td><td style="text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:0.5rem"><div style="width:60px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden"><div style="width:${k.winProbability}%;height:100%;background:${k.winProbability>70?'#059669':k.winProbability>40?'#d97706':'#dc2626'};border-radius:3px"></div></div><span style="font-size:0.8rem">${k.winProbability}%</span></div></td><td style="text-align:center"><span class="volume-badge volume-${(k.volume||'').toLowerCase()}">${k.volume}</span></td></tr>`).join(''):'<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia l\'analisi per le keyword.</td></tr>'}</tbody></table>`}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
           <div class="card fade-in fade-in-delay-3">

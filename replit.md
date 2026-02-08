@@ -4,12 +4,15 @@
 GEOAudit AI Intelligence is a SaaS web application for AI-powered brand perception analysis. It features user authentication, a full dashboard with dark sidebar navigation, subscription management, and multiple AI tools for SEO, AEO, content creation, and social media.
 
 ## Recent Changes
-- 2026-02-08: Redesigned report hero cards with centered icon, gradient top bar, centered title (matching first release design)
-- 2026-02-08: Added "Aggiungi alla Presentazione" button on all 5 SEO tool pages (appears after analysis completes)
-- 2026-02-08: Rebuilt Client Presentation with real AI data rendering, A4 PDF export (window.print), mini-site web view (opens in new tab), config/preview modes, report toggles
-- 2026-02-08: All SEO tool pages now have full AI integration with loading states, error handling, result rendering
-- 2026-02-08: Rebuilt complete frontend with dark sidebar layout matching original design
-- 2026-02-08: Full-stack setup with Express + TypeScript backend, Replit Auth, PostgreSQL database, subscription system
+- 2026-02-08: **Major AI analysis upgrade** - All tools now scrape the real website (title, meta, headings, text content, Schema.org, OG tags) and pass real data to AI prompts
+- 2026-02-08: Upgraded to Gemini 2.5 Flash as primary LLM (only AEO Audit uses multi-engine with OpenAI + Perplexity)
+- 2026-02-08: Rewrote all AI prompts to produce domain-specific, data-driven results instead of generic/simulated outputs
+- 2026-02-08: Added scrape failure detection with user-friendly error messages
+- 2026-02-08: Enhanced AI Overview with Ranking column, progress bar for Win Probability, color-coded Volume badges
+- 2026-02-08: Added fallback scraping of internal pages (about, products, services) when homepage has minimal content
+- 2026-02-08: Redesigned report hero cards with centered icon, gradient top bar, centered title
+- 2026-02-08: Rebuilt Client Presentation with real AI data rendering, A4 PDF export, mini-site web view
+- 2026-02-08: Full-stack setup with Express + TypeScript backend, Replit Auth, PostgreSQL database
 
 ## User Preferences
 - Language: Italian (UI is in Italian)
