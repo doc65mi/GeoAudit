@@ -431,15 +431,162 @@ const App = {
     `;
   },
 
+  vsState: {
+    lens: '55mm',
+    settore: 'auto',
+    stile: 'human-oriented-realism',
+    formato: '1:1',
+    ora: 'mattina',
+    mode: 'dopo',
+    prompt: '',
+  },
+
+  vsLenses: [
+    { id: '23mm', name: '23mm \u2013 The Immersive Wide', desc: 'Visione dinamica, espande lo spazio. Esaspera la distanza primo...' },
+    { id: '33mm', name: '33mm \u2013 The Narrative Eye', desc: 'Simile visione umana. Street photography, fotogiornalismo.' },
+    { id: '55mm', name: '55mm \u2013 Micro-Contrast Standard', desc: "Chirurgico, separazione piani netta, Bokeh 'Swirly' o circolare." },
+    { id: '70mm', name: '70mm \u2013 Portrait Sweet Spot', desc: 'Compressione lusinghiera, riduce prominenza naso. Isolamento.' },
+    { id: '90mm', name: '90mm \u2013 Compression Master', desc: 'Isolamento estremo. Sfondo pittorico, DoF ridottissima.' },
+  ],
+
+  vsFormats: ['1:1', '16:9', '9:16', '4:3', '3:4'],
+  vsOre: [
+    { id: 'alba', label: 'Alba', icon: '' },
+    { id: 'mattina', label: 'Mattina', icon: '' },
+    { id: 'mezzogiorno', label: 'Mezzogiorno', icon: '' },
+    { id: 'pomeriggio', label: 'Pomeriggio', icon: '' },
+    { id: 'golden', label: 'Golden', icon: '' },
+    { id: 'blue', label: 'Blue', icon: '' },
+    { id: 'notte', label: 'Notte', icon: '\u263D' },
+    { id: 'nuvoloso', label: 'Nuvoloso', icon: '' },
+  ],
+
+  vsSetLens(id) { this.vsState.lens = id; this.renderApp(); },
+  vsSetSettore(s) { this.vsState.settore = s; this.renderApp(); },
+  vsSetFormato(f) { this.vsState.formato = f; this.renderApp(); },
+  vsSetOra(o) { this.vsState.ora = o; this.renderApp(); },
+  vsToggleMode() { this.vsState.mode = this.vsState.mode === 'dopo' ? 'prima' : 'dopo'; this.renderApp(); },
+
   pageVisualStudio() {
+    const s = this.vsState;
+    const oraLabel = this.vsOre.find(o => o.id === s.ora)?.label || 'Mattina';
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.palette}</div>
-          <h2>Visual Studio</h2>
-          <p class="tool-desc">Crea contenuti visivi professionali per il tuo brand con l'aiuto dell'intelligenza artificiale.</p>
-          <textarea class="tool-textarea" placeholder="Descrivi l'immagine che vuoi creare..."></textarea>
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Genera Immagine</button>
+      <div class="vs-page fade-in">
+        <div class="vs-header">
+          <div class="vs-header-icon">${ICONS.palette}</div>
+          <div>
+            <h1>Visual Studio</h1>
+            <p>Motore di rendering fotorealistico con Virtual Lens Emulator.</p>
+          </div>
+        </div>
+
+        <div class="vs-layout">
+          <div class="vs-controls">
+            <div class="vs-card">
+              <div class="vs-card-top">
+                <h3>Prompt Visivo</h3>
+                <div class="vs-mode-toggle">
+                  <span class="vs-mode-label">MODE: PRIMA/DOPO</span>
+                  <button class="vs-toggle ${s.mode === 'dopo' ? 'active' : ''}" onclick="App.vsToggleMode()">
+                    <span class="vs-toggle-knob"></span>
+                  </button>
+                </div>
+              </div>
+              <textarea class="vs-textarea" id="vs-prompt" placeholder="Descrivi la scena..." oninput="App.vsState.prompt=this.value">${s.prompt}</textarea>
+            </div>
+
+            <div class="vs-card">
+              <div class="vs-card-label">\u2728 SCENARIO REFERENCE (OPZIONALE)</div>
+              <div class="vs-upload-area">
+                <div class="vs-upload-icon">\u2601</div>
+              </div>
+            </div>
+
+            <div class="vs-card">
+              <div class="vs-card-label">\u2699 VIRTUAL LENS EMULATOR</div>
+              <div class="vs-lens-list">
+                ${this.vsLenses.map(l => `
+                  <div class="vs-lens-item ${s.lens === l.id ? 'active' : ''}" onclick="App.vsSetLens('${l.id}')">
+                    <div>
+                      <div class="vs-lens-name">${l.name}</div>
+                      <div class="vs-lens-desc">${l.desc}</div>
+                    </div>
+                    ${s.lens === l.id ? '<div class="vs-lens-dot"></div>' : ''}
+                  </div>
+                `).join('')}
+              </div>
+            </div>
+
+            <div class="vs-card">
+              <div class="vs-card-label">\u2699 SCENE SETUP</div>
+
+              <div class="vs-setup-row">
+                <div class="vs-setup-col">
+                  <div class="vs-setup-label">SETTORE</div>
+                  <div class="vs-btn-group">
+                    <button class="vs-icon-btn ${s.settore === 'auto' ? 'active' : ''}" onclick="App.vsSetSettore('auto')" title="Automotive">\uD83D\uDE97</button>
+                    <button class="vs-icon-btn ${s.settore === 'casa' ? 'active' : ''}" onclick="App.vsSetSettore('casa')" title="Casa">\uD83C\uDFE0</button>
+                  </div>
+                </div>
+                <div class="vs-setup-col">
+                  <div class="vs-setup-label">STILE</div>
+                  <select class="vs-select" onchange="App.vsState.stile=this.value">
+                    <option value="human-oriented-realism" ${s.stile==='human-oriented-realism'?'selected':''}>Human-Oriented Realism</option>
+                    <option value="cinematic" ${s.stile==='cinematic'?'selected':''}>Cinematic</option>
+                    <option value="editorial" ${s.stile==='editorial'?'selected':''}>Editorial</option>
+                    <option value="minimal" ${s.stile==='minimal'?'selected':''}>Minimal</option>
+                    <option value="dramatic" ${s.stile==='dramatic'?'selected':''}>Dramatic</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="vs-setup-label">FORMATO IMMAGINE</div>
+              <div class="vs-format-group">
+                ${this.vsFormats.map(f => `
+                  <button class="vs-format-btn ${s.formato === f ? 'active' : ''}" onclick="App.vsSetFormato('${f}')">
+                    <div class="vs-format-icon vs-format-${f.replace(':','-')}"></div>
+                    <span>${f}</span>
+                  </button>
+                `).join('')}
+              </div>
+
+              <div class="vs-setup-label">\u2600 ORA DEL GIORNO</div>
+              <div class="vs-ora-group">
+                ${this.vsOre.map(o => `
+                  <button class="vs-ora-btn ${s.ora === o.id ? 'active' : ''}" onclick="App.vsSetOra('${o.id}')">
+                    ${o.icon ? `<span class="vs-ora-icon">${o.icon}</span>` : ''}${o.label}
+                  </button>
+                `).join('')}
+              </div>
+            </div>
+
+            <button class="btn btn-primary btn-block vs-render-btn" onclick="alert('Renderizzazione in arrivo!')">
+              \u2728 Renderizza Asset
+            </button>
+          </div>
+
+          <div class="vs-preview">
+            <div class="vs-preview-bar">
+              <span>${s.lens.toUpperCase()}</span>
+              <span>${s.formato}</span>
+              <span>${oraLabel} (Neutral)</span>
+            </div>
+            <div class="vs-preview-area">
+              <div class="vs-preview-icon">
+                <svg viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="40" cy="40" r="35"/>
+                  <circle cx="40" cy="40" r="25"/>
+                  <circle cx="40" cy="40" r="15"/>
+                  <line x1="40" y1="5" x2="40" y2="15"/>
+                  <line x1="40" y1="65" x2="40" y2="75"/>
+                  <line x1="5" y1="40" x2="15" y2="40"/>
+                  <line x1="65" y1="40" x2="75" y2="40"/>
+                </svg>
+              </div>
+              <div class="vs-preview-text">Visual Studio Ready</div>
+              <div class="vs-preview-sub">Carica reference o imposta i parametri per iniziare.</div>
+            </div>
+          </div>
         </div>
       </div>
     `;
