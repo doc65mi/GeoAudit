@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { setupAuth, registerAuthRoutes, isAuthenticated } from "./replit_integrations/auth";
 import { registerSubscriptionRoutes } from "./routes/subscriptions";
+import { registerAiRoutes } from "./routes/ai";
 import { db } from "./db";
 
 const app = express();
@@ -14,6 +15,7 @@ async function start() {
   await setupAuth(app);
   registerAuthRoutes(app);
   registerSubscriptionRoutes(app);
+  registerAiRoutes(app);
 
   app.use(express.static(path.join(__dirname, "..", "public")));
 
