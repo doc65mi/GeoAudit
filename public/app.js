@@ -473,6 +473,7 @@ const App = {
   aiResults: {},
   aiLoading: {},
   aiError: {},
+  analyzedDomains: {},
 
   async callAI(endpoint, body) {
     const ss = this.settingsState;
@@ -545,6 +546,7 @@ const App = {
     const domain = document.getElementById('geo-domain')?.value;
     if (!domain) { this.showToast('Inserisci un dominio web', 'warning'); return; }
     if (!this.settingsState.geminiKey) { this.showToast('Configura la chiave API Gemini in Impostazioni', 'warning'); return; }
+    this.analyzedDomains['geo-audit'] = domain;
     try {
       const data = await this.callAI('geo-audit', { domain });
       this.clientData.storicoAnalisi.unshift({ date: new Date().toLocaleDateString('it-IT'), type: 'GEO', label: domain, status: data.sentimentScore > 60 ? 'OK' : data.sentimentScore > 30 ? 'WARNING' : 'CRITICAL', includedInPresentation: false });
@@ -556,6 +558,7 @@ const App = {
     const domain = document.getElementById('aeo-domain')?.value;
     if (!domain) { this.showToast('Inserisci un dominio web', 'warning'); return; }
     if (!this.settingsState.geminiKey) { this.showToast('Configura la chiave API Gemini in Impostazioni', 'warning'); return; }
+    this.analyzedDomains['aeo-audit'] = domain;
     try {
       await this.callAI('aeo-audit', { domain });
       this.clientData.storicoAnalisi.unshift({ date: new Date().toLocaleDateString('it-IT'), type: 'AEO', label: domain, status: 'OK', includedInPresentation: false });
@@ -567,6 +570,7 @@ const App = {
     const domain = document.getElementById('prompt-tracker-domain')?.value;
     if (!domain) { this.showToast('Inserisci un dominio web', 'warning'); return; }
     if (!this.settingsState.geminiKey) { this.showToast('Configura la chiave API Gemini in Impostazioni', 'warning'); return; }
+    this.analyzedDomains['prompt-tracker'] = domain;
     try {
       const data = await this.callAI('prompt-tracker', { domain });
       this.clientData.storicoAnalisi.unshift({ date: new Date().toLocaleDateString('it-IT'), type: 'Prompt', label: domain, status: data.citationScore > 50 ? 'OK' : 'WARNING', includedInPresentation: false });
@@ -578,6 +582,7 @@ const App = {
     const domain = document.getElementById('aio-domain')?.value;
     if (!domain) { this.showToast('Inserisci un dominio web', 'warning'); return; }
     if (!this.settingsState.geminiKey) { this.showToast('Configura la chiave API Gemini in Impostazioni', 'warning'); return; }
+    this.analyzedDomains['ai-overview'] = domain;
     try {
       await this.callAI('ai-overview', { domain });
       this.clientData.storicoAnalisi.unshift({ date: new Date().toLocaleDateString('it-IT'), type: 'AI Overview', label: domain, status: 'OK', includedInPresentation: false });
@@ -590,11 +595,127 @@ const App = {
     const keyword = document.getElementById('vc-keyword')?.value;
     if (!url || !keyword) { this.showToast('Inserisci URL e keyword target', 'warning'); return; }
     if (!this.settingsState.geminiKey) { this.showToast('Configura la chiave API Gemini in Impostazioni', 'warning'); return; }
+    this.analyzedDomains['vector-check'] = keyword;
+    this.analyzedDomains['vector-check-url'] = url;
     try {
       const data = await this.callAI('vector-check', { url, keyword });
       this.clientData.storicoAnalisi.unshift({ date: new Date().toLocaleDateString('it-IT'), type: 'Vector', label: keyword, status: data.relevanceScore > 60 ? 'OK' : 'WARNING', includedInPresentation: false });
       this.saveToStorage();
     } catch(e) {}
+  },
+
+  resetReport(endpoint) {
+    this.aiResults[endpoint] = null;
+    this.aiError[endpoint] = null;
+    this.renderApp();
+  },
+
+  getMetricBadge(value) {
+    if (value > 70) return '<span class="report-metric-badge badge-high">HIGH</span>';
+    if (value > 40) return '<span class="report-metric-badge badge-medium">MEDIUM</span>';
+    return '<span class="report-metric-badge badge-low">LOW</span>';
+  },
+
+  getScoreClass(score) {
+    if (score >= 7) return 'score-green';
+    if (score >= 4) return 'score-orange';
+    return 'score-red';
+  },
+
+  getImpactBadge(index) {
+    if (index === 0) return '<span class="report-impact-badge impact-high">HIGH IMPACT</span>';
+    if (index === 1) return '<span class="report-impact-badge impact-high">HIGH IMPACT</span>';
+    if (index === 2) return '<span class="report-impact-badge impact-medium">MEDIUM IMPACT</span>';
+    return '<span class="report-impact-badge impact-low">LOW IMPACT</span>';
+  },
+
+  reportBrandedHeader(typeLabel) {
+    const date = new Date().toLocaleDateString('it-IT');
+    return `<div class="report-branded-header">
+      <div class="report-branded-header-left">${ICONS.globe}<span>GEOAudit AI Intelligence</span></div>
+      <div class="report-branded-header-right"><div class="report-type-label">${typeLabel}</div><div class="report-date">${date}</div></div>
+    </div>`;
+  },
+
+  reportActionBar(endpoint, addPresentationKey) {
+    return `<div class="report-action-bar">
+      <div class="report-action-bar-left">
+        <button class="report-link-btn" onclick="App.resetReport('${endpoint}')">&larr; Nuova Analisi</button>
+        <button class="btn btn-outline btn-sm" onclick="App.addToPresentation('${addPresentationKey || endpoint}')">${ICONS.presentation} Aggiungi al Report</button>
+      </div>
+      <div class="report-action-bar-right">
+        <button class="btn btn-dark btn-sm" onclick="App.downloadReportPDF('${endpoint}')">${ICONS.share} Scarica PDF Rapido</button>
+      </div>
+    </div>`;
+  },
+
+  downloadReportPDF(type) {
+    const domain = this.analyzedDomains[type] || 'dominio';
+    const date = new Date().toLocaleDateString('it-IT');
+    const typeLabels = { 'geo-audit': 'GEO Strategy Report', 'aeo-audit': 'AEO Strategy Report', 'prompt-tracker': 'AI Prompt Tracker Report', 'ai-overview': 'AI Overview Report', 'vector-check': 'Vector Check Report' };
+    const r = this.aiResults[type];
+    if (!r) { this.showToast('Nessun dato disponibile per il PDF', 'warning'); return; }
+
+    let sections = '';
+    if (type === 'aeo-audit') {
+      const m = r.metriche || {};
+      const vals = ['visibilita','accuratezza','coerenza'].flatMap(k => [m[k]?.chatgpt||0, m[k]?.perplexity||0, m[k]?.gemini||0]);
+      const avg = vals.length ? (vals.reduce((a,b)=>a+b,0) / vals.length / 10).toFixed(1) : '0.0';
+      sections = `<div style="text-align:center;margin:2rem 0"><div style="font-size:3rem;font-weight:800;color:${parseFloat(avg)>=7?'#10b981':parseFloat(avg)>=4?'#f59e0b':'#ef4444'}">${avg}</div><div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;color:#64748b">AEO SCORE</div></div>`;
+      sections += `<h3 style="margin:1.5rem 0 0.75rem">Confronto Motori AI</h3>`;
+      sections += `<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr><th style="text-align:left;padding:0.5rem;border-bottom:2px solid #e2e8f0">Metrica</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">ChatGPT</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Perplexity</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Gemini</th></tr></thead><tbody>`;
+      ['visibilita','accuratezza','coerenza'].forEach(k => {
+        const labels = {visibilita:'Visibilità',accuratezza:'Accuratezza',coerenza:'Coerenza'};
+        sections += `<tr><td style="padding:0.5rem;border-bottom:1px solid #f1f5f9;font-weight:500">${labels[k]}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${m[k]?.chatgpt??'--'}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${m[k]?.perplexity??'--'}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${m[k]?.gemini??'--'}</td></tr>`;
+      });
+      sections += '</tbody></table>';
+      if (r.roadmap) { sections += '<h3 style="margin:1.5rem 0 0.75rem">Roadmap Trimestrale</h3>'; r.roadmap.forEach(q => { sections += `<div style="margin-bottom:0.5rem"><strong>${q.quarter}:</strong> ${q.titolo} - ${q.azioni}</div>`; }); }
+    } else if (type === 'geo-audit') {
+      const score = ((r.sentimentScore || 0) / 10).toFixed(1);
+      sections = `<div style="text-align:center;margin:2rem 0"><div style="font-size:3rem;font-weight:800;color:${parseFloat(score)>=7?'#10b981':parseFloat(score)>=4?'#f59e0b':'#ef4444'}">${score}</div><div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;color:#64748b">GEO SCORE</div></div>`;
+      sections += `<h3 style="margin:1rem 0 0.5rem">Identità del Brand</h3><p><strong>Mission:</strong> ${r.mission||'N/D'}</p><p><strong>Vision:</strong> ${r.vision||'N/D'}</p><p><strong>Valori:</strong> ${r.valori||'N/D'}</p>`;
+      if (r.competitors) { sections += '<h3 style="margin:1rem 0 0.5rem">Competitor</h3>'; r.competitors.forEach(c => { sections += `<p>${c.nome} (${c.settore})</p>`; }); }
+    } else if (type === 'prompt-tracker') {
+      const score = ((r.citationScore || 0) / 10).toFixed(1);
+      sections = `<div style="text-align:center;margin:2rem 0"><div style="font-size:3rem;font-weight:800;color:${parseFloat(score)>=7?'#10b981':parseFloat(score)>=4?'#f59e0b':'#ef4444'}">${score}</div><div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;color:#64748b">CITATION SCORE</div></div>`;
+      if (r.queries) { sections += '<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr><th style="text-align:left;padding:0.5rem;border-bottom:2px solid #e2e8f0">#</th><th style="text-align:left;padding:0.5rem;border-bottom:2px solid #e2e8f0">Query</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Citato</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Sentiment</th></tr></thead><tbody>'; r.queries.forEach((q,i) => { sections += `<tr><td style="padding:0.5rem;border-bottom:1px solid #f1f5f9">${i+1}</td><td style="padding:0.5rem;border-bottom:1px solid #f1f5f9">${q.query}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${q.citato?'Sì':'No'}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${q.sentiment}</td></tr>`; }); sections += '</tbody></table>'; }
+    } else if (type === 'ai-overview') {
+      if (r.keywords) { sections += '<table style="width:100%;border-collapse:collapse;font-size:0.85rem"><thead><tr><th style="text-align:left;padding:0.5rem;border-bottom:2px solid #e2e8f0">Keyword</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Ranking</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Win Prob.</th><th style="text-align:center;padding:0.5rem;border-bottom:2px solid #e2e8f0">Volume</th></tr></thead><tbody>'; r.keywords.forEach(k => { sections += `<tr><td style="padding:0.5rem;border-bottom:1px solid #f1f5f9">${k.keyword}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${k.ranking||'-'}</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${k.winProbability}%</td><td style="text-align:center;padding:0.5rem;border-bottom:1px solid #f1f5f9">${k.volume}</td></tr>`; }); sections += '</tbody></table>'; }
+      if (r.contentGaps) { sections += '<h3 style="margin:1.5rem 0 0.75rem">Content Gap</h3><ul>'; r.contentGaps.forEach(g => { sections += `<li>${g}</li>`; }); sections += '</ul>'; }
+      if (r.fixes) { sections += '<h3 style="margin:1rem 0 0.5rem">Actionable Fixes</h3><ol>'; r.fixes.forEach(f => { sections += `<li>${f}</li>`; }); sections += '</ol>'; }
+    } else if (type === 'vector-check') {
+      const score = ((r.relevanceScore || 0) / 10).toFixed(1);
+      sections = `<div style="text-align:center;margin:2rem 0"><div style="font-size:3rem;font-weight:800;color:${parseFloat(score)>=7?'#10b981':parseFloat(score)>=4?'#f59e0b':'#ef4444'}">${score}</div><div style="font-size:0.7rem;font-weight:700;letter-spacing:2px;color:#64748b">RELEVANCE SCORE</div></div>`;
+      sections += `<p><strong>Densità Semantica:</strong> ${r.semanticDensity||'--'} | <strong>Embedding Distance:</strong> ${r.embeddingDistance??'--'} | <strong>Cluster Match:</strong> ${r.clusterMatch||'--'}</p>`;
+      if (r.topTerms) { sections += `<p style="margin-top:0.75rem"><strong>Top Terms:</strong> ${r.topTerms.join(', ')}</p>`; }
+      if (r.consigli) { sections += '<h3 style="margin:1rem 0 0.5rem">Consigli</h3><ol>'; r.consigli.forEach(c => { sections += `<li>${c}</li>`; }); sections += '</ol>'; }
+    }
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${typeLabels[type]} - ${domain}</title>
+    <style>
+      @page { size: A4; margin: 20mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e293b; font-size: 11pt; line-height: 1.6; padding: 2rem; }
+      h2 { font-size: 1.6rem; font-weight: 800; margin-bottom: 0.25rem; }
+      h3 { font-size: 1.1rem; font-weight: 700; }
+      p { margin-bottom: 0.5rem; }
+      .header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1rem; border-bottom: 3px solid #3b82f6; margin-bottom: 1.5rem; }
+      .header-left { display: flex; align-items: center; gap: 0.75rem; font-weight: 700; font-size: 0.85rem; letter-spacing: 1px; text-transform: uppercase; }
+      .header-right { text-align: right; }
+      .header-right .type-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 1.5px; color: #3b82f6; text-transform: uppercase; }
+      .header-right .date { font-size: 0.8rem; color: #64748b; }
+    </style></head><body>
+    <div class="header">
+      <div class="header-left">${ICONS.globe} GEOAudit AI Intelligence</div>
+      <div class="header-right"><div class="type-label">${typeLabels[type].toUpperCase()}</div><div class="date">${date}</div></div>
+    </div>
+    <h2 style="text-align:center;margin-bottom:0.25rem">${typeLabels[type]}: ${domain}</h2>
+    ${sections}
+    </body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => w.print(), 500);
   },
 
   async generateSocialPost(platform, platformLabel) {
@@ -1041,72 +1162,97 @@ const App = {
     const loading = this.aiLoading['geo-audit'];
     const err = this.aiError['geo-audit'];
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi in corso...</span></div>`;
+    const domain = this.analyzedDomains['geo-audit'] || '';
+    const geoScore = r ? ((r.sentimentScore || 0) / 10).toFixed(1) : '0.0';
+
+    let reportHtml = '';
+    if (r) {
+      reportHtml = `
+        ${this.reportActionBar('geo-audit','geo-audit')}
+        <div class="report-container fade-in">
+          ${this.reportBrandedHeader('GEO STRATEGY REPORT')}
+          <div class="report-title-section">
+            <h2>GEO Audit: ${domain}</h2>
+            <div class="report-subtitle">Generative Engine Optimization Analysis</div>
+          </div>
+          <div class="report-score-section">
+            <div class="report-score-large ${this.getScoreClass(parseFloat(geoScore))}">${geoScore}</div>
+            <div class="report-score-label">GEO SCORE</div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.target}<h3>Identit\u00e0 del Brand</h3></div>
+            <div class="report-info-cards">
+              <div class="report-info-card"><div class="info-label">Mission</div><div class="info-value">${r.mission || 'N/D'}</div></div>
+              <div class="report-info-card"><div class="info-label">Vision</div><div class="info-value">${r.vision || 'N/D'}</div></div>
+              <div class="report-info-card"><div class="info-label">Valori</div><div class="info-value">${r.valori || 'N/D'}</div></div>
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.checkCircle}<h3>Sentiment Analysis</h3></div>
+            <div class="report-two-col">
+              <div>
+                <div style="text-align:center;padding:1rem 0">
+                  <div style="font-size:2.5rem;font-weight:700;color:${r.sentimentScore>60?'var(--success)':r.sentimentScore>30?'var(--warning)':'var(--danger)'}">${r.sentimentScore}</div>
+                  <div style="font-size:0.8rem;color:var(--text-light);margin-top:0.25rem">Punteggio Sentiment 0-100</div>
+                  <div class="report-sentiment-bar" style="max-width:300px;margin:0.75rem auto 0"><div class="report-sentiment-fill" style="width:${r.sentimentScore||0}%"></div></div>
+                </div>
+              </div>
+              <div>
+                <div class="report-tags-section">
+                  <div class="report-tags-label positive">Keyword Positive</div>
+                  <div class="report-tags">${(r.keywordPositive||[]).map(k => `<span class="report-tag tag-positive">${k}</span>`).join('') || '<span style="color:var(--text-light);font-size:0.85rem">Nessuna</span>'}</div>
+                  <div class="report-tags-label negative">Keyword Negative</div>
+                  <div class="report-tags">${(r.keywordNegative||[]).map(k => `<span class="report-tag tag-negative">${k}</span>`).join('') || '<span style="color:var(--text-light);font-size:0.85rem">Nessuna</span>'}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.compass}<h3>Rilevanza Geografica</h3></div>
+            <div class="report-two-col">
+              <div class="report-info-card"><div class="info-label">Copertura Locale</div><div class="info-value">${r.coperturaLocale || 'N/D'}</div></div>
+              <div class="report-info-card"><div class="info-label">Presenza Internazionale</div><div class="info-value">${r.presenzaInternazionale || 'N/D'}</div></div>
+            </div>
+          </div>
+
+          ${r.competitors?.length ? `<div class="report-section">
+            <div class="report-section-header">${ICONS.eye}<h3>Competitor Identificati</h3></div>
+            <div class="report-competitor-cards">${r.competitors.map(c => `<div class="report-competitor-card"><div class="comp-name">${c.nome}</div><div class="comp-sector">${c.settore}</div></div>`).join('')}</div>
+          </div>` : ''}
+
+          ${r.personas?.length ? `<div class="report-section">
+            <div class="report-section-header">${ICONS.user}<h3>Buyer Personas</h3></div>
+            <div class="report-persona-cards">${r.personas.map(p => `<div class="report-persona-card"><div class="persona-icon">${ICONS.user}</div><div class="persona-name">${p.nome}</div>${p.eta ? `<div class="persona-meta">${p.eta} &bull; ${p.ruolo||''}</div>` : ''}<div class="persona-desc">${p.descrizione || ''}</div></div>`).join('')}</div>
+          </div>` : ''}
+
+          ${r.contentGaps?.length || r.technicalFixes?.length ? `<div class="report-section">
+            <div class="report-section-header">${ICONS.compass}<h3>Strategic Blueprint</h3></div>
+            <div class="report-blueprint-section">
+              ${r.contentGaps?.length ? `<div class="report-blueprint-col"><h4>Content Gap</h4><ul class="report-gap-list">${r.contentGaps.map(g => `<li>${g}</li>`).join('')}</ul></div>` : ''}
+              ${r.technicalFixes?.length ? `<div class="report-blueprint-col"><h4>Technical Optimization</h4>${r.technicalFixes.map(f => `<div class="report-check-item"><div class="report-check-icon">${ICONS.checkCircle}</div><span>${f}</span></div>`).join('')}</div>` : ''}
+            </div>
+          </div>` : ''}
+        </div>`;
+    }
+
     return `
       <div class="fade-in">
         <div class="report-hero-card fade-in fade-in-delay-1">
           <div class="report-hero-gradient gradient-blue-purple"></div>
           <div class="report-hero-icon">${ICONS.globe}</div>
           <h2 class="report-hero-title">GEO Audit</h2>
-          <p class="report-hero-desc">Analisi profonda della percezione del brand da parte dei motori AI.</p>
+          <p class="report-hero-desc">Analisi profonda della percezione del brand da parte dei motori AI generativi.</p>
           <div class="report-hero-input">
-            <input type="text" class="tool-input report-input" id="geo-domain" placeholder="https://iltuosito.it/" />
+            <input type="text" class="tool-input report-input" id="geo-domain" placeholder="https://iltuosito.it/" ${r ? `value="${domain}"` : ''} />
             <button class="btn btn-dark btn-block report-btn" onclick="App.runGeoAudit()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Lancia Audit'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
           ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
-        <div class="card fade-in fade-in-delay-2">
-          <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.target}</div><div><h3>Identit&agrave; del Brand</h3><p class="card-desc">Mission, Vision e Valori percepiti dai motori AI</p></div></div>
-          ${loading?LS:`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
-            <div class="metric-card"><div class="metric-label">Mission</div><div class="metric-value-sm">${r?.mission||'<span class="empty-state">In attesa...</span>'}</div></div>
-            <div class="metric-card"><div class="metric-label">Vision</div><div class="metric-value-sm">${r?.vision||'<span class="empty-state">In attesa...</span>'}</div></div>
-            <div class="metric-card"><div class="metric-label">Valori</div><div class="metric-value-sm">${r?.valori||'<span class="empty-state">In attesa...</span>'}</div></div>
-          </div>`}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
-          <div class="card fade-in fade-in-delay-3">
-            <div class="card-header-row"><div class="card-icon bg-green">${ICONS.checkCircle}</div><div><h3>Sentiment Analysis</h3></div></div>
-            ${loading?LS:`<div style="text-align:center;padding:1rem">
-              <div class="score-circle ${r?(r.sentimentScore>60?'score-good':r.sentimentScore>30?'score-warn':'score-bad'):''}">${r?.sentimentScore??'--'}</div>
-              <div style="font-size:0.85rem;color:var(--text-light);margin-top:0.5rem">Punteggio 0-100</div>
-              <div style="margin-top:1rem;height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;width:${r?.sentimentScore||0}%;background:var(--gradient-bar);border-radius:4px;transition:width 0.5s"></div></div>
-            </div>
-            <div style="display:flex;justify-content:space-between;margin-top:0.5rem">
-              <div><div style="font-size:0.75rem;color:var(--success)">Keyword Positive</div><div style="font-size:0.8rem">${r?.keywordPositive?.join(', ')||'--'}</div></div>
-              <div style="text-align:right"><div style="font-size:0.75rem;color:var(--danger)">Keyword Negative</div><div style="font-size:0.8rem">${r?.keywordNegative?.join(', ')||'--'}</div></div>
-            </div>`}
-          </div>
-          <div class="card fade-in fade-in-delay-3">
-            <div class="card-header-row"><div class="card-icon bg-orange">${ICONS.compass}</div><div><h3>Rilevanza Locale / Internazionale</h3></div></div>
-            ${loading?LS:`<div style="padding:0.5rem">
-              <div class="relevance-row"><span>Copertura Locale</span><span class="status-badge ${r?'status-active':''}">${r?.coperturaLocale||'IN ATTESA'}</span></div>
-              <div class="relevance-row"><span>Presenza Internazionale</span><span class="status-badge ${r?'status-active':''}">${r?.presenzaInternazionale||'IN ATTESA'}</span></div>
-            </div>`}
-          </div>
-        </div>
-        <div class="card fade-in">
-          <div class="card-header-row"><div class="card-icon bg-red">${ICONS.eye}</div><div><h3>Competitor Identificati</h3><p class="card-desc">Rivali diretti identificati dall'AI</p></div></div>
-          ${loading?LS:(r?.competitors?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">${r.competitors.map(c=>`<div class="metric-card" style="text-align:center"><div style="font-weight:600">${c.nome}</div><div style="font-size:0.8rem;color:var(--text-light)">${c.settore}</div></div>`).join('')}</div>`:'<div class="empty-state">Lancia l\'audit per identificare i competitor.</div>')}
-        </div>
-        <div class="card fade-in">
-          <div class="card-header-row"><div class="card-icon bg-teal">${ICONS.user}</div><div><h3>Buyer Personas</h3><p class="card-desc">3 profili target generati dall'analisi</p></div></div>
-          ${loading?LS:`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
-            ${(r?.personas||[{nome:'Persona 1'},{nome:'Persona 2'},{nome:'Persona 3'}]).map(p=>`
-              <div class="metric-card" style="text-align:center">
-                <div class="persona-avatar">${ICONS.user}</div>
-                <div style="font-weight:600;margin-bottom:0.25rem">${p.nome}</div>
-                ${p.eta?`<div style="font-size:0.8rem;color:var(--text-light)">${p.eta} &bull; ${p.ruolo||''}</div>`:''}
-                <div style="font-size:0.85rem;color:var(--text-light);margin-top:0.25rem">${p.descrizione||'In attesa...'}</div>
-              </div>`).join('')}
-          </div>`}
-        </div>
-        <div class="card fade-in">
-          <div class="card-header-row"><div class="card-icon bg-gray">${ICONS.checkCircle}</div><div><h3>Output &amp; Status</h3></div></div>
-          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
-            ${['Identit\u00e0','Sentiment','Rilevanza','Competitor','Personas'].map(s=>`<span class="status-pill ${r?'status-pill-done':''}">${s}: ${r?'COMPLETATO':'IN ATTESA'}</span>`).join('')}
-          </div>
-          ${r?`<div style="margin-top:1rem;text-align:right"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('geo-audit')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
-        </div>
+        ${reportHtml}
       </div>`;
   },
 
@@ -1115,45 +1261,93 @@ const App = {
     const loading = this.aiLoading['aeo-audit'];
     const err = this.aiError['aeo-audit'];
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi multi-engine...</span></div>`;
+    const domain = this.analyzedDomains['aeo-audit'] || '';
+    const m = r?.metriche || {};
+    const metricVals = r ? ['visibilita','accuratezza','coerenza'].flatMap(k => [m[k]?.chatgpt||0, m[k]?.perplexity||0, m[k]?.gemini||0]) : [];
+    const aeoScore = metricVals.length ? (metricVals.reduce((a,b)=>a+b,0) / metricVals.length / 10).toFixed(1) : '0.0';
+    const engines = [{name:'ChatGPT',key:'chatgpt',color:'#10a37f'},{name:'Perplexity',key:'perplexity',color:'#20808D'},{name:'Gemini',key:'gemini',color:'#4285F4'}];
+
+    let reportHtml = '';
+    if (r) {
+      reportHtml = `
+        ${this.reportActionBar('aeo-audit','aeo-audit')}
+        <div class="report-container fade-in">
+          ${this.reportBrandedHeader('AEO STRATEGY REPORT')}
+          <div class="report-title-section">
+            <h2>AEO Audit: ${domain}</h2>
+            <div class="report-subtitle">Answer Engine Optimization Analysis</div>
+          </div>
+          <div class="report-score-section">
+            <div class="report-score-large ${this.getScoreClass(parseFloat(aeoScore))}">${aeoScore}</div>
+            <div class="report-score-label">AEO SCORE</div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.eye}<h3>Confronto Motori AI</h3></div>
+            <div class="report-engine-cards">
+              ${engines.map(e => {
+                const vis = m.visibilita?.[e.key] || 0;
+                const acc = m.accuratezza?.[e.key] || 0;
+                const coe = m.coerenza?.[e.key] || 0;
+                const quote = r.engines?.[e.key] || '';
+                const shortQuote = quote.length > 150 ? quote.substring(0, 150) + '...' : quote;
+                return `<div class="report-engine-card">
+                  <div class="report-engine-card-header"><div class="report-engine-dot" style="background:${e.color}"></div><span>${e.name}</span></div>
+                  <div class="report-engine-card-body">
+                    <div class="report-metric-row"><span class="metric-name">Visibilit\u00e0</span>${this.getMetricBadge(vis)}</div>
+                    <div class="report-metric-row"><span class="metric-name">Accuratezza</span>${this.getMetricBadge(acc)}</div>
+                    <div class="report-metric-row"><span class="metric-name">Coerenza</span>${this.getMetricBadge(coe)}</div>
+                    ${shortQuote ? `<div class="report-quote">"${shortQuote}"</div>` : ''}
+                  </div>
+                </div>`;
+              }).join('')}
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.compass}<h3>Strategic Blueprint</h3></div>
+            <div class="report-blueprint-section">
+              <div class="report-blueprint-col">
+                <h4>Content Gap &amp; Strategy</h4>
+                ${r.contentGaps?.length ? `<div class="blueprint-sublabel">COSA MANCA</div><ul class="report-gap-list">${r.contentGaps.map(g => `<li>${g}</li>`).join('')}</ul>` : ''}
+                ${r.contentSuggestions?.length ? `<div class="blueprint-sublabel">CONTENUTI SUGGERITI</div>${r.contentSuggestions.map(s => `<div class="report-content-suggestion"><div class="suggestion-type">${s.tipo || 'CONTENUTO'}</div><div class="suggestion-title">${s.titolo}</div><div class="suggestion-desc">${s.descrizione}</div></div>`).join('')}` : ''}
+                ${!r.contentGaps?.length && !r.contentSuggestions?.length ? `<div class="blueprint-sublabel">SCHEMA.ORG</div><div style="font-size:0.85rem;color:var(--text)">${r.schemaOrg || 'N/D'}</div>` : ''}
+              </div>
+              <div class="report-blueprint-col">
+                <h4>Technical AEO Optimization</h4>
+                ${r.technicalFixes?.length ? r.technicalFixes.map(f => `<div class="report-check-item"><div class="report-check-icon">${ICONS.checkCircle}</div><span>${f}</span></div>`).join('') : `<div style="font-size:0.85rem;color:var(--text)">${r.schemaOrg || 'Lancia l\'audit per suggerimenti.'}</div>`}
+              </div>
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-roadmap">
+              <div class="report-roadmap-header">${ICONS.compass}<span>Quarterly Execution Roadmap</span></div>
+              ${(r.roadmap || []).map((q, i) => `<div class="report-roadmap-row">
+                <div class="report-roadmap-quarter">${q.quarter}</div>
+                <div class="report-roadmap-content"><div class="roadmap-title">${q.titolo}</div><div class="roadmap-desc">${q.azioni || ''}</div></div>
+                ${this.getImpactBadge(i)}
+              </div>`).join('')}
+            </div>
+          </div>
+        </div>`;
+    }
+
     return `
       <div class="fade-in">
         <div class="report-hero-card fade-in fade-in-delay-1">
           <div class="report-hero-gradient gradient-green-teal"></div>
           <div class="report-hero-icon">${ICONS.target}</div>
           <h2 class="report-hero-title">AEO Audit <span class="badge pro" style="font-size:0.6rem;vertical-align:middle">PRO</span></h2>
-          <p class="report-hero-desc">Simulazione multi-motore per analizzare la percezione del brand.</p>
+          <p class="report-hero-desc">AEO (Answer Engine Optimization) - Analisi di come il tuo brand viene percepito e rappresentato dai principali motori AI generativi (ChatGPT, Perplexity, Gemini).</p>
           <div class="report-hero-input">
-            <input type="text" class="tool-input report-input" id="aeo-domain" placeholder="https://iltuosito.it/" />
+            <input type="text" class="tool-input report-input" id="aeo-domain" placeholder="https://iltuosito.it/" ${r ? `value="${domain}"` : ''} />
             <button class="btn btn-dark btn-block report-btn" onclick="App.runAeoAudit()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Lancia AEO Audit'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
           ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
-        <div class="card fade-in fade-in-delay-2">
-          <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.eye}</div><div><h3>Simulazione Multi-Engine</h3><p class="card-desc">Confronto risposte ChatGPT, Perplexity e Gemini</p></div></div>
-          ${loading?LS:`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
-            ${[{name:'ChatGPT',key:'chatgpt',color:'#10a37f'},{name:'Perplexity',key:'perplexity',color:'#20808D'},{name:'Gemini',key:'gemini',color:'#4285F4'}].map(e=>`
-              <div class="engine-card"><div class="engine-header" style="background:${e.color}">${e.name}</div>
-              <div class="engine-body">${r?.engines?.[e.key]||'<span class="empty-state">In attesa...</span>'}</div></div>`).join('')}
-          </div>`}
-        </div>
-        <div class="card fade-in fade-in-delay-3">
-          <div class="card-header-row"><div class="card-icon bg-green">${ICONS.checkCircle}</div><div><h3>Confronto Metriche</h3></div></div>
-          <table class="data-table"><thead><tr><th style="text-align:left">Metrica</th><th style="text-align:center">ChatGPT</th><th style="text-align:center">Perplexity</th><th style="text-align:center">Gemini</th></tr></thead>
-          <tbody>${['visibilita','accuratezza','coerenza'].map(m=>{const l={visibilita:'Visibilit\u00e0',accuratezza:'Accuratezza',coerenza:'Coerenza'};return`<tr><td style="font-weight:500">${l[m]}</td><td style="text-align:center">${r?.metriche?.[m]?.chatgpt!==undefined?`<span class="score-inline">${r.metriche[m].chatgpt}</span>`:'--'}</td><td style="text-align:center">${r?.metriche?.[m]?.perplexity!==undefined?`<span class="score-inline">${r.metriche[m].perplexity}</span>`:'--'}</td><td style="text-align:center">${r?.metriche?.[m]?.gemini!==undefined?`<span class="score-inline">${r.metriche[m].gemini}</span>`:'--'}</td></tr>`;}).join('')}</tbody></table>
-        </div>
-        <div class="card fade-in">
-          <div class="card-header-row"><div class="card-icon bg-orange">${ICONS.compass}</div><div><h3>Piano Strategico</h3></div></div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
-            <div><h4 style="margin-bottom:0.75rem">Roadmap Trimestrale</h4>
-              ${(r?.roadmap||[{quarter:'Q1',titolo:'Fondamenta',azioni:''},{quarter:'Q2',titolo:'Crescita',azioni:''},{quarter:'Q3',titolo:'Ottimizzazione',azioni:''},{quarter:'Q4',titolo:'Consolidamento',azioni:''}]).map(q=>`<div class="roadmap-item"><div class="roadmap-quarter">${q.quarter}</div><div><div style="font-weight:600;font-size:0.85rem">${q.titolo}</div><div style="font-size:0.8rem;color:var(--text-light)">${q.azioni||'In attesa...'}</div></div></div>`).join('')}
-            </div>
-            <div><h4 style="margin-bottom:0.75rem">Suggerimenti Schema.org</h4>
-              <div class="metric-card"><div style="font-size:0.85rem">${r?.schemaOrg||'<span class="empty-state">Lancia l\'audit per suggerimenti Schema.org.</span>'}</div></div>
-            </div>
-          </div>
-          ${r?`<div style="margin-top:1.5rem;text-align:right"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('aeo-audit')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
-        </div>
+        ${reportHtml}
       </div>`;
   },
 
@@ -1162,43 +1356,68 @@ const App = {
     const loading = this.aiLoading['prompt-tracker'];
     const err = this.aiError['prompt-tracker'];
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Tracking in corso...</span></div>`;
+    const domain = this.analyzedDomains['prompt-tracker'] || '';
+    const citScore = r ? ((r.citationScore || 0) / 10).toFixed(1) : '0.0';
+
+    let reportHtml = '';
+    if (r) {
+      reportHtml = `
+        ${this.reportActionBar('prompt-tracker','prompt-tracker')}
+        <div class="report-container fade-in">
+          ${this.reportBrandedHeader('AI PROMPT TRACKER REPORT')}
+          <div class="report-title-section">
+            <h2>AI Prompt Tracker: ${domain}</h2>
+            <div class="report-subtitle">Monitoraggio Citazioni AI del Brand</div>
+          </div>
+          <div class="report-score-section">
+            <div class="report-score-large ${this.getScoreClass(parseFloat(citScore))}">${citScore}</div>
+            <div class="report-score-label">CITATION SCORE</div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.checkCircle}<h3>Sentiment Citazione</h3></div>
+            <div class="report-two-col">
+              <div class="report-info-card">
+                <div class="info-label">Sentiment Generale</div>
+                <div class="info-value" style="font-size:1.3rem;font-weight:700;color:${r.sentiment==='Positivo'?'var(--success)':r.sentiment==='Negativo'?'var(--danger)':'var(--text-light)'}">${r.sentiment || 'N/D'}</div>
+              </div>
+              <div class="report-info-card">
+                <div class="info-label">Dettaglio</div>
+                <div class="info-value">${r.sentimentDetail || 'N/D'}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.search}<h3>Query Generate &amp; Citazioni</h3></div>
+            <table class="report-data-table">
+              <thead><tr><th style="width:40px">#</th><th>Query Generata</th><th style="text-align:center;width:100px">Stato</th><th style="text-align:center;width:100px">Sentiment</th></tr></thead>
+              <tbody>${r.queries?.length ? r.queries.map((q,i) => `<tr>
+                <td style="font-weight:600;color:var(--text-light)">${i+1}</td>
+                <td style="font-weight:500">${q.query}</td>
+                <td style="text-align:center"><span class="report-metric-badge ${q.citato ? 'badge-high' : 'badge-low'}">${q.citato ? 'CITATO' : 'NON CITATO'}</span></td>
+                <td style="text-align:center"><span class="report-tag ${q.sentiment==='positivo'?'tag-positive':q.sentiment==='negativo'?'tag-negative':'tag-neutral'}">${q.sentiment}</span></td>
+              </tr>`).join('') : '<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Nessuna query disponibile.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>`;
+    }
+
     return `
       <div class="fade-in">
         <div class="report-hero-card fade-in fade-in-delay-1">
           <div class="report-hero-gradient gradient-yellow-orange"></div>
           <div class="report-hero-icon">${ICONS.zap}</div>
           <h2 class="report-hero-title">AI Prompt Tracker</h2>
-          <p class="report-hero-desc">Verifica se il brand &egrave; citato come fonte autorevole nelle risposte AI.</p>
+          <p class="report-hero-desc">Verifica se il brand \u00e8 citato come fonte autorevole nelle risposte AI generative.</p>
           <div class="report-hero-input">
-            <input type="text" class="tool-input report-input" id="prompt-tracker-domain" placeholder="https://iltuosito.it/" />
+            <input type="text" class="tool-input report-input" id="prompt-tracker-domain" placeholder="https://iltuosito.it/" ${r ? `value="${domain}"` : ''} />
             <button class="btn btn-dark btn-block report-btn" onclick="App.runPromptTracker()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Avvia Tracking'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
           ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
-          <div class="card fade-in fade-in-delay-2">
-            <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.checkCircle}</div><div><h3>Citation Score</h3></div></div>
-            ${loading?LS:`<div style="text-align:center;padding:1.5rem">
-              <div class="score-circle ${r?(r.citationScore>60?'score-good':r.citationScore>30?'score-warn':'score-bad'):''}">${r?.citationScore??'--'}</div>
-              <div style="font-size:0.9rem;color:var(--text-light);margin-top:0.5rem">Frequenza e qualit&agrave; citazioni</div>
-              <div style="margin-top:1rem;height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;width:${r?.citationScore||0}%;background:var(--gradient-bar);border-radius:4px"></div></div>
-            </div>`}
-          </div>
-          <div class="card fade-in fade-in-delay-2">
-            <div class="card-header-row"><div class="card-icon bg-green">${ICONS.eye}</div><div><h3>Sentiment Citazione</h3></div></div>
-            ${loading?LS:`<div style="text-align:center;padding:1.5rem">
-              <div style="font-size:1.5rem;font-weight:600;color:${r?.sentiment==='Positivo'?'var(--success)':r?.sentiment==='Negativo'?'var(--danger)':'var(--text-light)'}">${r?.sentiment||'--'}</div>
-              <div style="font-size:0.85rem;color:var(--text-light);margin-top:0.5rem">${r?.sentimentDetail||'Analisi del tono delle menzioni'}</div>
-            </div>`}
-          </div>
-        </div>
-        <div class="card fade-in fade-in-delay-3">
-          <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.search}</div><div><h3>Query Generate &amp; Citazioni</h3><p class="card-desc">Query settoriali testate per la citazione del brand</p></div></div>
-          ${loading?LS:`<table class="data-table"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">Query Generata</th><th style="text-align:center">Stato</th><th style="text-align:center">Sentiment</th></tr></thead>
-          <tbody>${r?.queries?.length?r.queries.map((q,i)=>`<tr><td>${i+1}</td><td>${q.query}</td><td style="text-align:center"><span class="status-dot ${q.citato?'dot-green':'dot-red'}"></span>${q.citato?'Citato':'Non citato'}</td><td style="text-align:center"><span class="sentiment-tag sentiment-${q.sentiment}">${q.sentiment}</span></td></tr>`).join(''):'<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia il tracking per visualizzare i risultati.</td></tr>'}</tbody></table>`}
-          ${r?`<div style="margin-top:1rem;text-align:right"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('prompt-tracker')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
-        </div>
+        ${reportHtml}
       </div>`;
   },
 
@@ -1207,36 +1426,62 @@ const App = {
     const loading = this.aiLoading['ai-overview'];
     const err = this.aiError['ai-overview'];
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi in corso...</span></div>`;
+    const domain = this.analyzedDomains['ai-overview'] || '';
+
+    let reportHtml = '';
+    if (r) {
+      reportHtml = `
+        ${this.reportActionBar('ai-overview','ai-overview')}
+        <div class="report-container fade-in">
+          ${this.reportBrandedHeader('AI OVERVIEW REPORT')}
+          <div class="report-title-section">
+            <h2>AI Overview Visibility: ${domain}</h2>
+            <div class="report-subtitle">Traffico generato dalle risposte AI (SGE)</div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.search}<h3>Analisi Keyword &amp; Win Probability</h3></div>
+            <table class="report-data-table">
+              <thead><tr><th>Keyword Strategica</th><th style="text-align:center;width:80px">Ranking</th><th style="text-align:center;width:160px">Win Prob.</th><th style="text-align:center;width:90px">Volume</th></tr></thead>
+              <tbody>${r.keywords?.length ? r.keywords.map(k => `<tr>
+                <td style="font-weight:500">${k.keyword}</td>
+                <td style="text-align:center;font-weight:700">${k.ranking || '-'}</td>
+                <td style="text-align:center"><span class="win-prob-bar"><span class="win-prob-fill" style="width:${k.winProbability}%;background:${k.winProbability>70?'#059669':k.winProbability>40?'#d97706':'#dc2626'}"></span></span> ${k.winProbability}%</td>
+                <td style="text-align:center"><span class="report-volume-badge vol-${(k.volume||'').toLowerCase()}">${k.volume}</span></td>
+              </tr>`).join('') : '<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Nessuna keyword disponibile.</td></tr>'}</tbody>
+            </table>
+          </div>
+
+          <div class="report-section">
+            <div class="report-blueprint-section">
+              <div class="report-blueprint-col">
+                <div class="report-section-header">${ICONS.zap}<h3>Content Gap</h3></div>
+                ${r.contentGaps?.length ? `<ul class="report-gap-list">${r.contentGaps.map(g => `<li>${g}</li>`).join('')}</ul>` : '<div style="color:var(--text-light);font-size:0.85rem">Nessun content gap identificato.</div>'}
+              </div>
+              <div class="report-blueprint-col">
+                <div class="report-section-header">${ICONS.checkCircle}<h3>Actionable Fixes</h3></div>
+                ${r.fixes?.length ? `<ul class="report-fix-list">${r.fixes.map((f, i) => `<li><span class="report-fix-number">${i+1}</span>${f}</li>`).join('')}</ul>` : '<div style="color:var(--text-light);font-size:0.85rem">Nessun fix suggerito.</div>'}
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
     return `
       <div class="fade-in">
         <div class="report-hero-card fade-in fade-in-delay-1">
           <div class="report-hero-gradient gradient-purple-pink"></div>
           <div class="report-hero-icon">${ICONS.eye}</div>
           <h2 class="report-hero-title">AI Overview Tracker (SGE)</h2>
-          <p class="report-hero-desc">Ottimizzazione per gli snapshot AI di Google.</p>
+          <p class="report-hero-desc">Ottimizzazione per gli snapshot AI di Google e visibilit\u00e0 nelle risposte generative.</p>
           <div class="report-hero-input">
-            <input type="text" class="tool-input report-input" id="aio-domain" placeholder="https://iltuosito.it/" />
+            <input type="text" class="tool-input report-input" id="aio-domain" placeholder="https://iltuosito.it/" ${r ? `value="${domain}"` : ''} />
             <button class="btn btn-dark btn-block report-btn" onclick="App.runAiOverview()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Analizza AI Overview'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
           ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
-        <div class="card fade-in fade-in-delay-2">
-          <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.search}</div><div><h3>Analisi Keyword &amp; Win Probability</h3><p class="card-desc">Keyword che attivano risposte AI</p></div></div>
-          ${loading?LS:`<table class="data-table"><thead><tr><th style="text-align:left">Keyword Strategica</th><th style="text-align:center">Ranking</th><th style="text-align:center">Win Prob.</th><th style="text-align:center">Volume</th></tr></thead>
-          <tbody>${r?.keywords?.length?r.keywords.map(k=>`<tr><td style="font-weight:500">${k.keyword}</td><td style="text-align:center"><strong>${k.ranking||'-'}</strong></td><td style="text-align:center"><div style="display:flex;align-items:center;justify-content:center;gap:0.5rem"><div style="width:60px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden"><div style="width:${k.winProbability}%;height:100%;background:${k.winProbability>70?'#059669':k.winProbability>40?'#d97706':'#dc2626'};border-radius:3px"></div></div><span style="font-size:0.8rem">${k.winProbability}%</span></div></td><td style="text-align:center"><span class="volume-badge volume-${(k.volume||'').toLowerCase()}">${k.volume}</span></td></tr>`).join(''):'<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia l\'analisi per le keyword.</td></tr>'}</tbody></table>`}
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
-          <div class="card fade-in fade-in-delay-3">
-            <div class="card-header-row"><div class="card-icon bg-orange">${ICONS.zap}</div><div><h3>Content Gap</h3><p class="card-desc">Elementi mancanti per la visibilit&agrave; AI</p></div></div>
-            ${loading?LS:(r?.contentGaps?.length?`<ul class="gap-list">${r.contentGaps.map(g=>`<li><span class="gap-dot"></span>${g}</li>`).join('')}</ul>`:'<div class="empty-state">Lancia l\'analisi per i content gap.</div>')}
-          </div>
-          <div class="card fade-in fade-in-delay-3">
-            <div class="card-header-row"><div class="card-icon bg-green">${ICONS.checkCircle}</div><div><h3>Actionable Fixes</h3><p class="card-desc">Suggerimenti pratici di ottimizzazione</p></div></div>
-            ${loading?LS:(r?.fixes?.length?`<ul class="fix-list">${r.fixes.map((f,i)=>`<li><span class="fix-number">${i+1}</span>${f}</li>`).join('')}</ul>`:'<div class="empty-state">Lancia l\'analisi per suggerimenti.</div>')}
-          </div>
-        </div>
-        ${r?`<div style="text-align:right;margin-top:0.5rem"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('ai-overview')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
+        ${reportHtml}
       </div>`;
   },
 
@@ -1245,46 +1490,71 @@ const App = {
     const loading = this.aiLoading['vector-check'];
     const err = this.aiError['vector-check'];
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi vettoriale...</span></div>`;
+    const keyword = this.analyzedDomains['vector-check'] || '';
+    const vcUrl = this.analyzedDomains['vector-check-url'] || '';
+    const relScore = r ? ((r.relevanceScore || 0) / 10).toFixed(1) : '0.0';
+
+    let reportHtml = '';
+    if (r) {
+      reportHtml = `
+        ${this.reportActionBar('vector-check','vector-check')}
+        <div class="report-container fade-in">
+          ${this.reportBrandedHeader('VECTOR CHECK REPORT')}
+          <div class="report-title-section">
+            <h2>Vector Check: ${keyword}</h2>
+            <div class="report-subtitle">Analisi Semantica e Rilevanza Vettoriale</div>
+          </div>
+          <div class="report-score-section">
+            <div class="report-score-large ${this.getScoreClass(parseFloat(relScore))}">${relScore}</div>
+            <div class="report-score-label">RELEVANCE SCORE</div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.globe}<h3>Analisi Vettoriale</h3></div>
+            <div class="report-metric-cards">
+              <div class="report-metric-card-item"><div class="mc-label">Densit\u00e0 Semantica</div><div class="mc-value">${r.semanticDensity || '--'}</div></div>
+              <div class="report-metric-card-item"><div class="mc-label">Embedding Distance</div><div class="mc-value">${r.embeddingDistance ?? '--'}</div></div>
+              <div class="report-metric-card-item"><div class="mc-label">Cluster Match</div><div class="mc-value">${r.clusterMatch || '--'}</div></div>
+            </div>
+          </div>
+
+          <div class="report-section">
+            <div class="report-section-header">${ICONS.target}<h3>Termini Semantici</h3></div>
+            <div class="report-two-col">
+              <div>
+                <div class="report-tags-label positive">Top Terms (presenti)</div>
+                <div class="report-term-tags">${(r.topTerms || []).map(t => `<span class="report-term-tag term-present">${t}</span>`).join('') || '<span style="color:var(--text-light);font-size:0.85rem">Nessun termine</span>'}</div>
+              </div>
+              <div>
+                <div class="report-tags-label negative">Termini Mancanti</div>
+                <div class="report-term-tags">${(r.missingTerms || []).map(t => `<span class="report-term-tag term-missing">${t}</span>`).join('') || '<span style="color:var(--text-light);font-size:0.85rem">Nessun termine mancante</span>'}</div>
+              </div>
+            </div>
+          </div>
+
+          ${r.consigli?.length ? `<div class="report-section">
+            <div class="report-section-header">${ICONS.checkCircle}<h3>Consigli di Ottimizzazione</h3></div>
+            <ul class="report-fix-list">${r.consigli.map((c, i) => `<li><span class="report-fix-number">${i+1}</span>${c}</li>`).join('')}</ul>
+          </div>` : ''}
+        </div>`;
+    }
+
     return `
       <div class="fade-in">
         <div class="report-hero-card fade-in fade-in-delay-1">
           <div class="report-hero-gradient gradient-teal-blue"></div>
           <div class="report-hero-icon">${ICONS.checkCircle}</div>
           <h2 class="report-hero-title">Vector Check</h2>
-          <p class="report-hero-desc">Analisi tecnica degli embeddings e della rilevanza vettoriale.</p>
+          <p class="report-hero-desc">Analisi tecnica degli embeddings e della rilevanza vettoriale del contenuto.</p>
           <div class="report-hero-input">
-            <input type="text" class="tool-input report-input" id="vc-url" placeholder="https://www.esempio.it/pagina" />
-            <input type="text" class="tool-input report-input" id="vc-keyword" style="margin-top:0.5rem" placeholder="Keyword target: es. consulenza digitale" />
+            <input type="text" class="tool-input report-input" id="vc-url" placeholder="https://www.esempio.it/pagina" ${r ? `value="${vcUrl}"` : ''} />
+            <input type="text" class="tool-input report-input" id="vc-keyword" style="margin-top:0.5rem" placeholder="Keyword target: es. consulenza digitale" ${r ? `value="${keyword}"` : ''} />
             <button class="btn btn-dark btn-block report-btn" onclick="App.runVectorCheck()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Avvia Vector Check'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
           ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
-        <div class="card fade-in fade-in-delay-2">
-          <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.target}</div><div><h3>Semantic Relevance Score</h3></div></div>
-          ${loading?LS:`<div style="text-align:center;padding:1.5rem">
-            <div class="score-circle ${r?(r.relevanceScore>60?'score-good':r.relevanceScore>30?'score-warn':'score-bad'):''}">${r?.relevanceScore??'--'}</div>
-            <div style="font-size:0.9rem;color:var(--text-light);margin-top:0.5rem">Vicinanza semantica contenuto-query</div>
-            <div style="margin-top:1.5rem;height:12px;background:var(--border);border-radius:6px;overflow:hidden;max-width:400px;margin:1rem auto 0">
-              <div style="height:100%;width:${r?.relevanceScore||0}%;background:var(--gradient-bar);border-radius:6px;transition:width 0.5s"></div>
-            </div>
-          </div>`}
-        </div>
-        <div class="card fade-in fade-in-delay-3">
-          <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.globe}</div><div><h3>Analisi Vettoriale</h3><p class="card-desc">Simulazione indicizzazione vettoriale</p></div></div>
-          ${loading?LS:`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
-            <div class="metric-card" style="text-align:center"><div class="metric-label">Densit&agrave; Semantica</div><div class="metric-value">${r?.semanticDensity||'--'}</div></div>
-            <div class="metric-card" style="text-align:center"><div class="metric-label">Embedding Distance</div><div class="metric-value">${r?.embeddingDistance??'--'}</div></div>
-            <div class="metric-card" style="text-align:center"><div class="metric-label">Cluster Match</div><div class="metric-value">${r?.clusterMatch||'--'}</div></div>
-          </div>
-          ${r?.topTerms?`<div style="margin-top:1rem"><div class="metric-label" style="margin-bottom:0.5rem">Top Terms</div><div style="display:flex;flex-wrap:wrap;gap:0.5rem">${r.topTerms.map(t=>`<span class="term-tag">${t}</span>`).join('')}</div></div>`:''}
-          ${r?.missingTerms?`<div style="margin-top:1rem"><div class="metric-label" style="margin-bottom:0.5rem">Termini Mancanti</div><div style="display:flex;flex-wrap:wrap;gap:0.5rem">${r.missingTerms.map(t=>`<span class="term-tag term-missing">${t}</span>`).join('')}</div></div>`:''}`}
-        </div>
-        <div class="card fade-in">
-          <div class="card-header-row"><div class="card-icon bg-green">${ICONS.checkCircle}</div><div><h3>Consigli di Ottimizzazione</h3><p class="card-desc">Migliorare la densit&agrave; semantica</p></div></div>
-          ${loading?LS:(r?.consigli?.length?`<ul class="fix-list">${r.consigli.map((c,i)=>`<li><span class="fix-number">${i+1}</span>${c}</li>`).join('')}</ul>`:'<div class="empty-state">Avvia il Vector Check per consigli.</div>')}
-        </div>
-        ${r?`<div style="text-align:right;margin-top:0.5rem"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('vector-check')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
+        ${reportHtml}
       </div>`;
   },
 

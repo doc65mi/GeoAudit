@@ -305,7 +305,9 @@ Rispondi SOLO con un JSON valido (senza markdown, senza backtick):
     {"nome": "Nome Persona 1", "eta": "range età", "ruolo": "Ruolo coerente col target", "descrizione": "descrizione basata sui contenuti del sito"},
     {"nome": "Nome Persona 2", "eta": "range età", "ruolo": "Ruolo coerente col target", "descrizione": "descrizione basata sui contenuti del sito"},
     {"nome": "Nome Persona 3", "eta": "range età", "ruolo": "Ruolo coerente col target", "descrizione": "descrizione basata sui contenuti del sito"}
-  ]
+  ],
+  "contentGaps": ["lacuna contenutistica specifica 1", "lacuna 2", "lacuna 3"],
+  "technicalFixes": ["ottimizzazione tecnica GEO 1", "fix tecnico 2", "fix tecnico 3", "fix tecnico 4"]
 }`;
 
     const result = await callGemini(geminiKey, prompt);
@@ -392,7 +394,14 @@ Rispondi SOLO con JSON valido (no markdown):
     {"quarter": "Q3", "titolo": "Titolo specifico", "azioni": "Azioni concrete"},
     {"quarter": "Q4", "titolo": "Titolo specifico", "azioni": "Azioni concrete"}
   ],
-  "schemaOrg": "Suggerimenti Schema.org specifici basati sui contenuti e il settore del sito analizzato"
+  "schemaOrg": "Suggerimenti Schema.org specifici basati sui contenuti e il settore del sito analizzato",
+  "contentGaps": ["lacuna contenutistica specifica 1", "lacuna contenutistica specifica 2", "lacuna contenutistica specifica 3"],
+  "technicalFixes": ["ottimizzazione tecnica AEO specifica 1", "ottimizzazione tecnica AEO 2", "ottimizzazione tecnica AEO 3", "ottimizzazione tecnica AEO 4"],
+  "contentSuggestions": [
+    {"titolo": "Titolo contenuto suggerito 1", "descrizione": "Descrizione breve del contenuto da creare", "tipo": "LONG-FORM BLOG POST"},
+    {"titolo": "Titolo contenuto suggerito 2", "descrizione": "Descrizione breve", "tipo": "FAQ STRUTTURATE"},
+    {"titolo": "Titolo contenuto suggerito 3", "descrizione": "Descrizione breve", "tipo": "CASE STUDY"}
+  ]
 }`;
 
     const metricResult = await callGemini(geminiKey, metricPrompt);
