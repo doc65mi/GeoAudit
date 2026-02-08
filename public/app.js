@@ -25,6 +25,7 @@ const App = {
   plans: [],
   currentPage: 'geo-audit',
   openMenus: { seo: true, social: true },
+  schedaTab: 'dettagli',
 
   validPages: ['scheda-cliente','client-presentation','geo-audit','aeo-audit','ai-prompt-tracker','ai-overview','vector-check','visual-studio','wizard-post','linkedin','facebook','instagram','impostazioni'],
 
@@ -341,7 +342,7 @@ const App = {
   },
 
   clientData: {
-    nome: '', descrizione: '', target: '', sito: '', socialLinks: '',
+    nome: '', descrizione: '', target: '', toneOfVoice: '', sito: '', socialLinks: '',
     knowledgeBase: '',
     brandVoice: { formale: 50, amichevole: 50, umoristico: 50, tecnico: 50 },
     preferredWords: '', forbiddenWords: '',
@@ -446,8 +447,12 @@ const App = {
     }
   },
 
+  setSchedaTab(tab) { this.schedaTab = tab; this.renderApp(); },
+
   pageSchedaCliente() {
     const cd = this.clientData;
+    const tab = this.schedaTab || 'dettagli';
+
     const comps = cd.competitors.map((c, i) => `
       <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
         <span style="flex:1;font-weight:600">${c.nome}</span>
@@ -467,30 +472,32 @@ const App = {
       </div>
     `).join('') : '<div class="empty-state">Nessuna analisi effettuata. Lancia il tuo primo audit!</div>';
 
-    return `
-      <div class="fade-in">
-        <div class="dash-header">
-          <h1>${ICONS.user} Scheda Cliente</h1>
-          <p>Il cervello del progetto. Definisci i dati che influenzano tutti i moduli.</p>
-        </div>
-
-        <div class="card fade-in fade-in-delay-1">
+    let tabContent = '';
+    if (tab === 'dettagli') {
+      tabContent = `
+        <div class="card fade-in">
           <h3>Dati Generali</h3>
           <div class="form-group">
             <label>Nome Cliente / Brand</label>
-            <input type="text" class="tool-input" value="${cd.nome}" oninput="App.clientData.nome=this.value" placeholder="Es. Acme Corp" />
+            <input type="text" class="tool-input" value="${cd.nome}" oninput="App.clientData.nome=this.value" placeholder="Es. EcoSolutions Srl" />
           </div>
           <div class="form-group">
-            <label>Descrizione Attivit&agrave; (USP)</label>
-            <textarea class="tool-textarea" oninput="App.clientData.descrizione=this.value" placeholder="Descrivi l'attivit&agrave; principale e la proposta di valore unica...">${cd.descrizione}</textarea>
+            <label>Descrizione Attivit&agrave;</label>
+            <textarea class="tool-textarea" oninput="App.clientData.descrizione=this.value" placeholder="Di cosa si occupa l'azienda? Qual &egrave; la USP?">${cd.descrizione}</textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+            <div class="form-group">
+              <label>Target Audience</label>
+              <input type="text" class="tool-input" value="${cd.target}" oninput="App.clientData.target=this.value" placeholder="Es. PMI, Famiglie, Giovani 18-25..." />
+            </div>
+            <div class="form-group">
+              <label>Tono di Voce (ToV)</label>
+              <input type="text" class="tool-input" value="${cd.toneOfVoice || ''}" oninput="App.clientData.toneOfVoice=this.value" placeholder="Es. Professionale, Amichevole, Istituzionale..." />
+            </div>
           </div>
           <div class="form-group">
-            <label>Target Audience</label>
-            <input type="text" class="tool-input" value="${cd.target}" oninput="App.clientData.target=this.value" placeholder="Es. PMI italiane, 25-45 anni, settore tech" />
-          </div>
-          <div class="form-group">
-            <label>Sito Web</label>
-            <input type="text" class="tool-input" value="${cd.sito}" oninput="App.clientData.sito=this.value" placeholder="https://www.esempio.it" />
+            <label>Sito Web Principale</label>
+            <input type="text" class="tool-input" value="${cd.sito}" oninput="App.clientData.sito=this.value" placeholder="https://..." />
           </div>
           <div class="form-group">
             <label>Social Links</label>
@@ -498,16 +505,29 @@ const App = {
           </div>
         </div>
 
-        <div class="card fade-in fade-in-delay-2">
+        <div class="card fade-in">
           <h3>Knowledge Base (RAG Lite)</h3>
-          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Inserisci informazioni specifiche non pubbliche. Questo contenuto verr&agrave; iniettato in tutti i prompt AI. Supporto Drag &amp; Drop per file .txt, .md, .csv, .json</p>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Inserisci informazioni specifiche non pubbliche. Questo contenuto verr&agrave; iniettato in tutti i prompt AI.</p>
           <div style="border:2px dashed var(--border);border-radius:8px;padding:1rem;margin-bottom:0.5rem;text-align:center;color:var(--text-light);font-size:0.85rem" ondragover="event.preventDefault();this.style.borderColor='var(--primary)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="App.handleKBDrop(event);this.style.borderColor='var(--border)'">
             Trascina qui i file .txt, .md, .csv, .json per importarli
           </div>
           <textarea id="kb-textarea" class="tool-textarea" style="min-height:200px" oninput="App.clientData.knowledgeBase=this.value" placeholder="Incolla qui policy interne, storia del fondatore, FAQ, interviste...">${cd.knowledgeBase}</textarea>
         </div>
 
-        <div class="card fade-in fade-in-delay-3">
+        <div class="card fade-in">
+          <h3>Competitors</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Aggiungi i competitor per analisi comparative nel GEO Audit.</p>
+          <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+            <input type="text" id="comp-name" class="tool-input" style="margin-bottom:0;flex:1" placeholder="Nome competitor" />
+            <input type="text" id="comp-url" class="tool-input" style="margin-bottom:0;flex:1" placeholder="URL competitor" />
+            <button class="btn btn-primary btn-sm" onclick="App.addCompetitor()">Aggiungi</button>
+          </div>
+          ${comps || '<div class="empty-state">Nessun competitor aggiunto.</div>'}
+        </div>
+      `;
+    } else if (tab === 'brandvoice') {
+      tabContent = `
+        <div class="card fade-in">
           <h3>Brand Voice Engine</h3>
           <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Configura lo stile di comunicazione del brand con i cursori.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
@@ -537,23 +557,36 @@ const App = {
             <textarea class="tool-textarea" style="min-height:80px" oninput="App.clientData.forbiddenWords=this.value" placeholder="Parole vietate nei testi generati, es: delve, landscape, unlock...">${cd.forbiddenWords}</textarea>
           </div>
         </div>
-
-        <div class="card fade-in">
-          <h3>Competitors</h3>
-          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Aggiungi i competitor per analisi comparative nel GEO Audit.</p>
-          <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
-            <input type="text" id="comp-name" class="tool-input" style="margin-bottom:0;flex:1" placeholder="Nome competitor" />
-            <input type="text" id="comp-url" class="tool-input" style="margin-bottom:0;flex:1" placeholder="URL competitor" />
-            <button class="btn btn-primary btn-sm" onclick="App.addCompetitor()">Aggiungi</button>
-          </div>
-          ${comps || '<div class="empty-state">Nessun competitor aggiunto.</div>'}
-        </div>
-
+      `;
+    } else {
+      tabContent = `
         <div class="card fade-in">
           <h3>Storico Analisi</h3>
           <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Log cronologico delle analisi effettuate. Attiva il toggle per includerle nella Client Presentation.</p>
           ${storico}
         </div>
+      `;
+    }
+
+    const storicoCount = cd.storicoAnalisi.length;
+
+    return `
+      <div class="fade-in">
+        <div class="page-header">
+          <div class="page-header-icon">${ICONS.user}</div>
+          <div class="page-header-text">
+            <h1>Scheda Cliente: ${cd.nome || 'Nuovo Progetto'}</h1>
+            <p>Gestisci identit&agrave;, brand voice e storico analisi.</p>
+          </div>
+        </div>
+
+        <div class="tab-bar">
+          <button class="tab-btn ${tab === 'dettagli' ? 'active' : ''}" onclick="App.setSchedaTab('dettagli')">Dettagli &amp; Contenuti</button>
+          <button class="tab-btn ${tab === 'brandvoice' ? 'active' : ''}" onclick="App.setSchedaTab('brandvoice')">Brand Voice Engine</button>
+          <button class="tab-btn ${tab === 'storico' ? 'active' : ''}" onclick="App.setSchedaTab('storico')">Storico Analisi (${storicoCount})</button>
+        </div>
+
+        ${tabContent}
       </div>
     `;
   },
@@ -1184,14 +1217,23 @@ const App = {
   pageWizardPost() {
     const ws = this.wizardState;
     const platforms = [
-      { id: 'linkedin', label: 'LinkedIn', icon: ICONS.linkedin },
-      { id: 'facebook', label: 'Facebook', icon: ICONS.facebook },
-      { id: 'instagram', label: 'Instagram', icon: ICONS.instagram },
-      { id: 'youtube', label: 'YouTube', icon: ICONS.eye },
-      { id: 'pinterest', label: 'Pinterest', icon: ICONS.palette },
-      { id: 'gmb', label: 'Google My Business', icon: ICONS.globe }
+      { id: 'linkedin', label: 'LinkedIn', desc: 'B2B & Leadership.', color: '#0077B5' },
+      { id: 'facebook', label: 'Facebook', desc: 'Community & Ads.', color: '#1877F2' },
+      { id: 'instagram', label: 'Instagram', desc: 'Visual & Reels.', color: '#E4405F' },
+      { id: 'youtube', label: 'YouTube', desc: 'Video & Shorts.', color: '#FF0000' },
+      { id: 'pinterest', label: 'Pinterest', desc: 'Inspiration & Traffic.', color: '#E60023' },
+      { id: 'gmb', label: 'Google My Business', desc: 'Local SEO.', color: '#4285F4' }
     ];
-    const objectives = ['Awareness', 'Engagement', 'Conversion', 'Educational'];
+    const platformIcons = {
+      linkedin: ICONS.linkedin, facebook: ICONS.facebook, instagram: ICONS.instagram,
+      youtube: ICONS.eye, pinterest: ICONS.palette, gmb: ICONS.compass
+    };
+    const objectives = [
+      { id: 'awareness', label: 'Awareness', desc: 'Massimizza la visibilit&agrave; del brand.' },
+      { id: 'engagement', label: 'Engagement', desc: 'Stimola commenti e interazioni.' },
+      { id: 'conversion', label: 'Conversion', desc: "Guida l'utente all'acquisto o lead." },
+      { id: 'educational', label: 'Educational', desc: 'Informa e crea autorit&agrave;.' }
+    ];
     const frameworks = [
       { id: 'hero', label: "Viaggio dell'Eroe" },
       { id: 'pas', label: 'PAS (Problem-Agitation-Solution)' },
@@ -1199,14 +1241,15 @@ const App = {
       { id: 'cliff', label: 'Cliffhanger' }
     ];
 
+    const stepLabels = ['OBIETTIVO', 'TARGET', 'CONTENUTO', 'RISULTATO'];
     const stepIndicator = `
-      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:2rem">
+      <div class="wiz-steps">
         ${[1,2,3,4].map(s => `
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:0.25rem">
-            <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;${ws.step >= s ? 'background:var(--primary);color:white' : 'background:var(--border);color:var(--text-light)'}">${s}</div>
-            <span style="font-size:0.7rem;color:${ws.step >= s ? 'var(--primary)' : 'var(--text-light)'}">${['Obiettivo','Target','Contenuto','Risultato'][s-1]}</span>
+          <div style="display:flex;flex-direction:column;align-items:center">
+            <div class="wiz-step-circle ${ws.step === s ? 'active' : ws.step > s ? 'done' : ''}">${s}</div>
+            <div class="wiz-step-label ${ws.step === s ? 'active' : ''}">${stepLabels[s-1]}</div>
           </div>
-          ${s < 4 ? `<div style="flex:2;height:2px;background:${ws.step > s ? 'var(--primary)' : 'var(--border)'};margin-top:-1rem"></div>` : ''}
+          ${s < 4 ? `<div class="wiz-step-line ${ws.step > s ? 'done' : ''}"></div>` : ''}
         `).join('')}
       </div>
     `;
@@ -1214,99 +1257,103 @@ const App = {
     let stepContent = '';
     if (ws.step === 1) {
       stepContent = `
-        <h3>Step 1: Definizione Obiettivo</h3>
-        <div class="form-group">
-          <label>Piattaforma</label>
-          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem">
-            ${platforms.map(p => `
-              <button class="btn ${ws.platform === p.id ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.platform='${p.id}';App.renderApp()" style="gap:0.3rem">
-                ${p.label}
-              </button>
-            `).join('')}
-          </div>
+        <div class="wiz-section-title">Definisci l'Obiettivo</div>
+        <div class="wiz-section-sub">Scegli la piattaforma per iniziare.</div>
+        <div class="wiz-platform-grid">
+          ${platforms.map(p => `
+            <div class="wiz-platform-card ${ws.platform === p.id ? 'active' : ''}" onclick="App.wizardState.platform='${p.id}';App.renderApp()">
+              <div class="wiz-p-icon" style="color:${p.color}">${platformIcons[p.id]}</div>
+              <div class="wiz-p-name">${p.label}</div>
+              <div class="wiz-p-desc">${p.desc}</div>
+            </div>
+          `).join('')}
         </div>
-        <div class="form-group" style="margin-top:1rem">
-          <label>Obiettivo</label>
-          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem">
-            ${objectives.map(o => `
-              <button class="btn ${ws.objective === o.toLowerCase() ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.objective='${o.toLowerCase()}';App.renderApp()">
-                ${o}
-              </button>
-            `).join('')}
-          </div>
+        <div class="wiz-objective-grid">
+          ${objectives.map(o => `
+            <div class="wiz-objective-card ${ws.objective === o.id ? 'active' : ''}" onclick="App.wizardState.objective='${o.id}';App.renderApp()">
+              <div>
+                <div class="wiz-o-name">${o.label}</div>
+                <div class="wiz-o-desc">${o.desc}</div>
+              </div>
+            </div>
+          `).join('')}
         </div>
       `;
     } else if (ws.step === 2) {
       stepContent = `
-        <h3>Step 2: Target &amp; Context</h3>
-        <div class="form-group">
-          <label>Buyer Persona</label>
-          <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem">Seleziona o descrivi la persona target. L'AI adatter&agrave; tono e linguaggio.</p>
-          <select class="tool-input" onchange="App.wizardState.persona=this.value">
-            <option value="" ${!ws.persona ? 'selected' : ''}>-- Seleziona Persona --</option>
-            <option value="manager" ${ws.persona === 'manager' ? 'selected' : ''}>Manager / Decision Maker</option>
-            <option value="tecnico" ${ws.persona === 'tecnico' ? 'selected' : ''}>Tecnico / Sviluppatore</option>
-            <option value="imprenditore" ${ws.persona === 'imprenditore' ? 'selected' : ''}>Imprenditore / Startup</option>
-            <option value="studente" ${ws.persona === 'studente' ? 'selected' : ''}>Studente / Junior</option>
-            <option value="custom" ${ws.persona === 'custom' ? 'selected' : ''}>Personalizzata</option>
-          </select>
-        </div>
-        <div class="form-group">
-          <label>Adattamento Tono</label>
-          <p style="font-size:0.8rem;color:var(--text-light)">Il tono verr&agrave; adattato in base alla persona selezionata e alle impostazioni del Brand Voice Engine nella Scheda Cliente.</p>
+        <div class="wiz-section-title">Definisci il Target</div>
+        <div class="wiz-section-sub">Seleziona la persona target. L'AI adatter&agrave; tono e linguaggio.</div>
+        <div class="card" style="text-align:left">
+          <div class="form-group">
+            <label>Buyer Persona</label>
+            <select class="tool-input" onchange="App.wizardState.persona=this.value">
+              <option value="" ${!ws.persona ? 'selected' : ''}>-- Seleziona Persona --</option>
+              <option value="manager" ${ws.persona === 'manager' ? 'selected' : ''}>Manager / Decision Maker</option>
+              <option value="tecnico" ${ws.persona === 'tecnico' ? 'selected' : ''}>Tecnico / Sviluppatore</option>
+              <option value="imprenditore" ${ws.persona === 'imprenditore' ? 'selected' : ''}>Imprenditore / Startup</option>
+              <option value="studente" ${ws.persona === 'studente' ? 'selected' : ''}>Studente / Junior</option>
+              <option value="custom" ${ws.persona === 'custom' ? 'selected' : ''}>Personalizzata</option>
+            </select>
+          </div>
+          <p style="font-size:0.85rem;color:var(--text-light)">Il tono verr&agrave; adattato in base alla persona selezionata e alle impostazioni del Brand Voice Engine.</p>
         </div>
       `;
     } else if (ws.step === 3) {
       stepContent = `
-        <h3>Step 3: Input Creativo</h3>
-        <div class="form-group">
-          <label>Topic / Argomento</label>
-          <input type="text" class="tool-input" value="${ws.topic}" oninput="App.wizardState.topic=this.value" placeholder="Es. Come aumentare le vendite online" />
-        </div>
-        <div class="form-group">
-          <label>Contesto (link, note)</label>
-          <textarea class="tool-textarea" oninput="App.wizardState.context=this.value" placeholder="Aggiungi link, note o contesto aggiuntivo...">${ws.context}</textarea>
-        </div>
-        <div class="form-group">
-          <label>Storytelling Framework</label>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
-            ${frameworks.map(f => `
-              <button class="btn ${ws.framework === f.id ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.framework='${f.id}';App.renderApp()">
-                ${f.label}
-              </button>
-            `).join('')}
+        <div class="wiz-section-title">Input Creativo</div>
+        <div class="wiz-section-sub">Inserisci argomento, contesto e framework narrativo.</div>
+        <div class="card" style="text-align:left">
+          <div class="form-group">
+            <label>Topic / Argomento</label>
+            <input type="text" class="tool-input" value="${ws.topic}" oninput="App.wizardState.topic=this.value" placeholder="Es. Come aumentare le vendite online" />
+          </div>
+          <div class="form-group">
+            <label>Contesto (link, note)</label>
+            <textarea class="tool-textarea" oninput="App.wizardState.context=this.value" placeholder="Aggiungi link, note o contesto aggiuntivo...">${ws.context}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Storytelling Framework</label>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+              ${frameworks.map(f => `
+                <button class="btn ${ws.framework === f.id ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.framework='${f.id}';App.renderApp()">
+                  ${f.label}
+                </button>
+              `).join('')}
+            </div>
           </div>
         </div>
       `;
     } else {
       stepContent = `
-        <h3>Step 4: Risultato &amp; Azioni</h3>
-        <div class="form-group">
-          <label>Testo Generato</label>
-          <textarea class="tool-textarea" style="min-height:200px" oninput="App.wizardState.generatedText=this.value" placeholder="Il testo generato apparir&agrave; qui dopo la generazione...">${ws.generatedText}</textarea>
-        </div>
-        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
-          <button class="btn btn-primary" onclick="alert('Generazione testo con Anti-AI Layer in corso...')">Genera Testo</button>
-          <button class="btn btn-outline" onclick="alert('Generazione variante in corso...')">Genera Variante</button>
-          <button class="btn btn-outline" onclick="App.copyToClipboard(App.wizardState.generatedText)">Copia</button>
-          <button class="btn btn-outline" onclick="alert('Generazione prompt immagine in corso...')">Genera Immagine</button>
+        <div class="wiz-section-title">Risultato &amp; Azioni</div>
+        <div class="wiz-section-sub">Genera, modifica e copia il contenuto finale.</div>
+        <div class="card" style="text-align:left">
+          <div class="form-group">
+            <label>Testo Generato</label>
+            <textarea class="tool-textarea" style="min-height:200px" oninput="App.wizardState.generatedText=this.value" placeholder="Il testo generato apparir&agrave; qui dopo la generazione...">${ws.generatedText}</textarea>
+          </div>
+          <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+            <button class="btn btn-primary" onclick="alert('Generazione testo con Anti-AI Layer in corso...')">Genera Testo</button>
+            <button class="btn btn-outline" onclick="alert('Generazione variante in corso...')">Genera Variante</button>
+            <button class="btn btn-outline" onclick="App.copyToClipboard(App.wizardState.generatedText)">Copia</button>
+            <button class="btn btn-outline" onclick="alert('Generazione prompt immagine in corso...')">Genera Immagine</button>
+          </div>
         </div>
       `;
     }
 
     return `
       <div class="fade-in">
-        <div class="dash-header">
-          <h1>${ICONS.edit} Wizard Post</h1>
-          <p>Processo guidato in 4 step per generare contenuti social Human-Oriented.</p>
-        </div>
+        <div class="wiz-container">
+          <div class="wiz-title">Social Content <span>Wizard</span></div>
+          <div class="wiz-subtitle">Crea contenuti human-oriented in 4 step.</div>
 
-        <div class="card fade-in fade-in-delay-1">
           ${stepIndicator}
           ${stepContent}
-          <div style="display:flex;justify-content:space-between;margin-top:1.5rem">
-            <button class="btn btn-ghost" ${ws.step === 1 ? 'disabled style="opacity:0.5"' : ''} onclick="App.wizardPrev()">Indietro</button>
-            ${ws.step < 4 ? `<button class="btn btn-primary" onclick="App.wizardNext()">Avanti</button>` : ''}
+
+          <div class="wiz-nav">
+            ${ws.step > 1 ? `<button class="wiz-back-btn" onclick="App.wizardPrev()">&larr; Indietro</button>` : ''}
+            ${ws.step < 4 ? `<button class="wiz-next-btn" onclick="App.wizardNext()">Prosegui &rarr;</button>` : ''}
           </div>
         </div>
       </div>
