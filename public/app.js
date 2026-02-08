@@ -407,6 +407,27 @@ const App = {
     this.renderApp();
   },
 
+  addToPresentation(type) {
+    const keyMap = { 'geo-audit': 'geo', 'aeo-audit': 'aeo', 'prompt-tracker': 'promptTracker', 'ai-overview': 'aiOverview', 'vector-check': 'vectorCheck' };
+    const k = keyMap[type];
+    if (k) {
+      this.presentationState.selectedReports[k] = true;
+      this.saveToStorage();
+      this.showToast('Report aggiunto alla presentazione!', 'success');
+      this.renderApp();
+    }
+  },
+
+  showToast(msg, type = 'success') {
+    let t = document.getElementById('toast-global');
+    if (!t) { t = document.createElement('div'); t.id = 'toast-global'; t.className = 'toast-notification'; document.body.appendChild(t); }
+    t.textContent = msg;
+    t.className = 'toast-notification toast-' + type + ' show';
+    setTimeout(() => { t.classList.remove('show'); }, 3000);
+  },
+
+  presentationMode: 'config',
+
   exportProject() {
     const data = { clientData: this.clientData, storicoAnalisi: this.clientData.storicoAnalisi, presentationState: this.presentationState, settingsState: { ...this.settingsState, geminiKey: '', openaiKey: '', perplexityKey: '' } };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -747,104 +768,272 @@ const App = {
     `;
   },
 
-  pageClientPresentation() {
+  renderReportSection(type, label, icon, data) {
+    if (!data) return `<div class="pres-section"><h3 class="pres-section-title">${icon} ${label}</h3><div class="empty-state">Nessun dato disponibile. Esegui l'analisi prima.</div></div>`;
+    let html = '';
+    if (type === 'geo') {
+      html = `
+        <div class="pres-metrics-row">
+          <div class="pres-metric"><div class="pres-metric-label">Mission</div><div class="pres-metric-val">${data.mission||'N/D'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Vision</div><div class="pres-metric-val">${data.vision||'N/D'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Valori</div><div class="pres-metric-val">${data.valori||'N/D'}</div></div>
+        </div>
+        <div class="pres-metrics-row">
+          <div class="pres-metric pres-metric-score"><div class="pres-metric-label">Sentiment Score</div><div class="pres-big-score ${data.sentimentScore>60?'score-good':data.sentimentScore>30?'score-warn':'score-bad'}">${data.sentimentScore||'--'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Copertura Locale</div><div class="pres-metric-val">${data.coperturaLocale||'N/D'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Presenza Internazionale</div><div class="pres-metric-val">${data.presenzaInternazionale||'N/D'}</div></div>
+        </div>
+        ${data.competitors?`<div class="pres-sub"><strong>Competitor:</strong> ${data.competitors.map(c=>c.nome).join(', ')}</div>`:''}
+        ${data.personas?`<div class="pres-sub"><strong>Buyer Personas:</strong> ${data.personas.map(p=>p.nome+(p.ruolo?' ('+p.ruolo+')':'')).join(', ')}</div>`:''}
+        ${data.keywordPositive?`<div class="pres-tags"><span class="pres-tag-pos">${data.keywordPositive.join('</span><span class="pres-tag-pos">')}</span></div>`:''}
+      `;
+    } else if (type === 'aeo') {
+      html = `
+        <div class="pres-engines">${[{name:'ChatGPT',key:'chatgpt',c:'#10a37f'},{name:'Perplexity',key:'perplexity',c:'#20808D'},{name:'Gemini',key:'gemini',c:'#4285F4'}].map(e=>`<div class="pres-engine"><div class="pres-engine-head" style="background:${e.c}">${e.name}</div><div class="pres-engine-body">${data.engines?.[e.key]||'N/D'}</div></div>`).join('')}</div>
+        ${data.metriche?`<table class="pres-table"><thead><tr><th>Metrica</th><th>ChatGPT</th><th>Perplexity</th><th>Gemini</th></tr></thead><tbody>${['visibilita','accuratezza','coerenza'].map(m=>`<tr><td>${{visibilita:'Visibilit\u00e0',accuratezza:'Accuratezza',coerenza:'Coerenza'}[m]}</td><td>${data.metriche[m]?.chatgpt??'--'}</td><td>${data.metriche[m]?.perplexity??'--'}</td><td>${data.metriche[m]?.gemini??'--'}</td></tr>`).join('')}</tbody></table>`:''}
+        ${data.schemaOrg?`<div class="pres-sub"><strong>Schema.org:</strong> ${data.schemaOrg}</div>`:''}
+      `;
+    } else if (type === 'promptTracker') {
+      html = `
+        <div class="pres-metrics-row">
+          <div class="pres-metric pres-metric-score"><div class="pres-metric-label">Citation Score</div><div class="pres-big-score ${data.citationScore>60?'score-good':data.citationScore>30?'score-warn':'score-bad'}">${data.citationScore||'--'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Sentiment</div><div class="pres-metric-val">${data.sentiment||'N/D'}</div><div style="font-size:0.8rem;color:var(--text-light)">${data.sentimentDetail||''}</div></div>
+        </div>
+        ${data.queries?`<table class="pres-table"><thead><tr><th>#</th><th>Query</th><th>Citato</th><th>Sentiment</th></tr></thead><tbody>${data.queries.map((q,i)=>`<tr><td>${i+1}</td><td>${q.query}</td><td>${q.citato?'S\u00ec':'No'}</td><td>${q.sentiment}</td></tr>`).join('')}</tbody></table>`:''}
+      `;
+    } else if (type === 'aiOverview') {
+      html = `
+        ${data.keywords?`<table class="pres-table"><thead><tr><th>Keyword</th><th>Volume</th><th>Win %</th><th>Status</th></tr></thead><tbody>${data.keywords.map(k=>`<tr><td>${k.keyword}</td><td>${k.volume}</td><td>${k.winProbability}%</td><td>${k.status}</td></tr>`).join('')}</tbody></table>`:''}
+        ${data.contentGaps?`<div class="pres-sub"><strong>Content Gap:</strong><ul>${data.contentGaps.map(g=>`<li>${g}</li>`).join('')}</ul></div>`:''}
+        ${data.fixes?`<div class="pres-sub"><strong>Actionable Fixes:</strong><ol>${data.fixes.map(f=>`<li>${f}</li>`).join('')}</ol></div>`:''}
+      `;
+    } else if (type === 'vectorCheck') {
+      html = `
+        <div class="pres-metrics-row">
+          <div class="pres-metric pres-metric-score"><div class="pres-metric-label">Relevance Score</div><div class="pres-big-score ${data.relevanceScore>60?'score-good':data.relevanceScore>30?'score-warn':'score-bad'}">${data.relevanceScore||'--'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Densit\u00e0 Semantica</div><div class="pres-metric-val">${data.semanticDensity||'--'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Embedding Distance</div><div class="pres-metric-val">${data.embeddingDistance??'--'}</div></div>
+          <div class="pres-metric"><div class="pres-metric-label">Cluster Match</div><div class="pres-metric-val">${data.clusterMatch||'--'}</div></div>
+        </div>
+        ${data.topTerms?`<div class="pres-sub"><strong>Top Terms:</strong> ${data.topTerms.join(', ')}</div>`:''}
+        ${data.consigli?`<div class="pres-sub"><strong>Consigli:</strong><ol>${data.consigli.map(c=>`<li>${c}</li>`).join('')}</ol></div>`:''}
+      `;
+    }
+    return `<div class="pres-section"><h3 class="pres-section-title">${icon} ${label}</h3>${html}</div>`;
+  },
+
+  generatePresentationHTML() {
     const ps = this.presentationState;
+    const cd = this.clientData;
     const reports = [
-      { key: 'geo', label: 'GEO Audit' },
-      { key: 'aeo', label: 'AEO Audit' },
-      { key: 'promptTracker', label: 'AI Prompt Tracker' },
-      { key: 'aiOverview', label: 'AI Overview' },
-      { key: 'vectorCheck', label: 'Vector Check' }
+      { key: 'geo', type: 'geo', aiKey: 'geo-audit', label: 'GEO Audit', icon: ICONS.globe },
+      { key: 'aeo', type: 'aeo', aiKey: 'aeo-audit', label: 'AEO Audit', icon: ICONS.target },
+      { key: 'promptTracker', type: 'promptTracker', aiKey: 'prompt-tracker', label: 'AI Prompt Tracker', icon: ICONS.zap },
+      { key: 'aiOverview', type: 'aiOverview', aiKey: 'ai-overview', label: 'AI Overview', icon: ICONS.eye },
+      { key: 'vectorCheck', type: 'vectorCheck', aiKey: 'vector-check', label: 'Vector Check', icon: ICONS.checkCircle }
     ];
-    const reportToggles = reports.map(r => `
-      <label style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border);cursor:pointer">
-        <input type="checkbox" ${ps.selectedReports[r.key] ? 'checked' : ''} onchange="App.toggleReportSelection('${r.key}')" />
-        <span style="flex:1">${r.label}</span>
-        <span style="font-size:0.75rem;padding:0.15rem 0.5rem;border-radius:4px;background:${ps.selectedReports[r.key] ? 'var(--success)' : 'var(--border)'};color:${ps.selectedReports[r.key] ? 'white' : 'var(--text-light)'}">${ps.selectedReports[r.key] ? 'INCLUSO' : 'ESCLUSO'}</span>
-      </label>
-    `).join('');
+    const selectedReports = reports.filter(r => ps.selectedReports[r.key]);
+    const clientName = ps.clientName || cd.nome || 'Cliente';
+    const mission = ps.mission || cd.descrizione || '';
+    const date = new Date().toLocaleDateString('it-IT', { year: 'numeric', month: 'long', day: 'numeric' });
 
-    const selectedList = reports.filter(r => ps.selectedReports[r.key]).map(r => `
-      <div style="padding:1.5rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);margin-bottom:1rem">
-        <h4 style="margin-bottom:0.5rem">${r.label}</h4>
-        <p style="color:var(--text-light);font-size:0.85rem">I dati del report ${r.label} verranno visualizzati qui.</p>
-      </div>
-    `).join('');
-
-    return `
-      <div class="fade-in" ${ps.fullscreen ? 'style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg);overflow-y:auto;padding:2rem"' : ''}>
-        <div class="dash-header" style="display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <h1>${ICONS.presentation} Client Presentation</h1>
-            <p>Presenta i risultati al cliente in modo professionale e interattivo.</p>
-          </div>
-          <div style="display:flex;gap:0.5rem">
-            <button class="btn ${ps.fullscreen ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.togglePresentationFullscreen()">
-              ${ps.fullscreen ? 'Esci Fullscreen' : 'Fullscreen'}
-            </button>
-          </div>
+    const cover = `
+      <div class="pres-cover">
+        <div class="pres-cover-logo">${ICONS.globe}</div>
+        <h1 class="pres-cover-title">${clientName}</h1>
+        <p class="pres-cover-subtitle">${mission}</p>
+        <div class="pres-cover-meta">
+          <span>GEOAudit AI Intelligence</span>
+          <span>${date}</span>
         </div>
-
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem">
-          <div>
-            <div class="card">
-              <h3>Modalit&agrave; Web - Configurazione</h3>
-              <div class="form-group">
-                <label>Nome Cliente</label>
-                <input type="text" class="tool-input" value="${ps.clientName}" oninput="App.presentationState.clientName=this.value" placeholder="Nome del cliente" />
-              </div>
-              <div class="form-group">
-                <label>Mission / Tagline</label>
-                <input type="text" class="tool-input" value="${ps.mission}" oninput="App.presentationState.mission=this.value" placeholder="La mission del brand..." />
-              </div>
-            </div>
-
-            <div class="card">
-              <h3>Selezione Report</h3>
-              <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Scegli quali analisi includere nella presentazione.</p>
-              ${reportToggles}
-            </div>
-
-            <div class="card">
-              <h3>Modalit&agrave; Stampa (PDF)</h3>
-              <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Esporta la presentazione in formato A4 con copertina personalizzata.</p>
-              <div class="form-group">
-                <label>Nome Brand (Copertina)</label>
-                <input type="text" class="tool-input" value="${ps.clientName}" placeholder="Nome per la copertina del PDF" />
-              </div>
-              <div class="form-group">
-                <label>Data Report</label>
-                <input type="date" class="tool-input" value="${new Date().toISOString().split('T')[0]}" />
-              </div>
-              <button class="btn btn-dark btn-block" onclick="alert('Esportazione PDF in arrivo! Formato A4 Portrait.')">
-                Esporta PDF (A4)
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <div class="card" style="min-height:300px">
-              <h3>Anteprima Presentazione</h3>
-              <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:12px;padding:2.5rem;text-align:center;color:white;margin-bottom:1.5rem">
-                <h2 style="font-size:1.8rem;margin-bottom:0.5rem;color:var(--primary)">${ps.clientName || 'Nome Cliente'}</h2>
-                <p style="opacity:0.8;font-size:1rem">${ps.mission || 'La tua mission qui...'}</p>
-                <div style="margin-top:1rem;display:flex;justify-content:center;gap:1rem;font-size:0.8rem;opacity:0.6">
-                  ${reports.filter(r => ps.selectedReports[r.key]).map(r => `<span>${r.label}</span>`).join('')}
-                </div>
-              </div>
-              ${selectedList || '<div class="empty-state">Seleziona almeno un report da includere.</div>'}
-            </div>
-          </div>
-        </div>
-
-        <div style="position:fixed;bottom:1.5rem;right:1.5rem;width:320px;z-index:100">
-          <div class="card" style="box-shadow:var(--shadow-lg);border:1px solid var(--primary)">
-            <h4 style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">${ICONS.edit} Note Rapide</h4>
-            <textarea class="tool-textarea" style="min-height:100px;font-size:0.85rem" oninput="App.presentationState.notes=this.value" placeholder="Appunti durante la presentazione...">${ps.notes}</textarea>
-          </div>
-        </div>
+        <div class="pres-cover-reports">${selectedReports.map(r=>`<span class="pres-cover-tag">${r.label}</span>`).join('')}</div>
       </div>
     `;
+    const sections = selectedReports.map(r => this.renderReportSection(r.type, r.label, r.icon, this.aiResults[r.aiKey])).join('');
+    return { cover, sections, clientName, date, selectedReports };
+  },
+
+  exportPDF() {
+    const { cover, sections, clientName } = this.generatePresentationHTML();
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Report ${clientName}</title>
+    <style>
+      @page { size: A4; margin: 20mm; }
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e293b; font-size: 11pt; line-height: 1.6; }
+      .pres-cover { page-break-after: always; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; text-align: center; background: linear-gradient(135deg, #f8fafc, #e2e8f0); padding: 3rem; }
+      .pres-cover-logo svg { width: 64px; height: 64px; color: #3b82f6; }
+      .pres-cover-title { font-size: 2.5rem; font-weight: 800; margin: 1rem 0 0.5rem; color: #0f172a; }
+      .pres-cover-subtitle { font-size: 1.1rem; color: #64748b; max-width: 400px; }
+      .pres-cover-meta { margin-top: 2rem; font-size: 0.85rem; color: #94a3b8; display: flex; gap: 2rem; }
+      .pres-cover-reports { margin-top: 1.5rem; display: flex; gap: 0.5rem; flex-wrap: wrap; justify-content: center; }
+      .pres-cover-tag { font-size: 0.75rem; padding: 0.25rem 0.75rem; border-radius: 4px; background: rgba(59,130,246,0.1); color: #3b82f6; }
+      .pres-section { page-break-inside: avoid; margin-bottom: 2rem; padding: 1.5rem; border: 1px solid #e2e8f0; border-radius: 8px; background: white; }
+      .pres-section-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.75rem; }
+      .pres-section-title svg { width: 20px; height: 20px; }
+      .pres-metrics-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+      .pres-metric { padding: 1rem; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; }
+      .pres-metric-label { font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
+      .pres-metric-val { font-size: 0.85rem; color: #1e293b; line-height: 1.4; }
+      .pres-big-score { font-size: 2rem; font-weight: 700; }
+      .pres-big-score.score-good { color: #059669; }
+      .pres-big-score.score-warn { color: #d97706; }
+      .pres-big-score.score-bad { color: #dc2626; }
+      .pres-sub { font-size: 0.85rem; margin: 0.75rem 0; line-height: 1.6; }
+      .pres-sub ul, .pres-sub ol { padding-left: 1.5rem; margin-top: 0.25rem; }
+      .pres-sub li { margin-bottom: 0.2rem; }
+      .pres-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; margin: 0.75rem 0; }
+      .pres-table th, .pres-table td { padding: 0.5rem 0.75rem; border: 1px solid #e2e8f0; text-align: left; }
+      .pres-table th { background: #f1f5f9; font-weight: 600; }
+      .pres-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+      .pres-tag-pos { font-size: 0.75rem; padding: 0.15rem 0.5rem; border-radius: 3px; background: rgba(16,185,129,0.1); color: #059669; }
+      .pres-engines { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+      .pres-engine { border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+      .pres-engine-head { color: white; padding: 0.4rem 0.75rem; font-weight: 600; font-size: 0.8rem; text-align: center; }
+      .pres-engine-body { padding: 0.75rem; font-size: 0.8rem; line-height: 1.5; }
+    </style></head><body>${cover}${sections}</body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+    setTimeout(() => { w.print(); }, 500);
+  },
+
+  openMiniSite() {
+    const { cover, sections, clientName, selectedReports } = this.generatePresentationHTML();
+    const ps = this.presentationState;
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Report - ${clientName}</title>
+    <style>
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+      body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; }
+      .mini-nav { position: sticky; top: 0; background: white; border-bottom: 1px solid #e2e8f0; padding: 0.75rem 2rem; display: flex; align-items: center; justify-content: space-between; z-index: 100; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+      .mini-nav-brand { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+      .mini-nav-brand svg { width: 20px; height: 20px; color: #3b82f6; }
+      .mini-nav-links { display: flex; gap: 1.5rem; font-size: 0.85rem; }
+      .mini-nav-links a { color: #64748b; text-decoration: none; } .mini-nav-links a:hover { color: #3b82f6; }
+      .mini-hero { background: linear-gradient(135deg, #0f172a, #1e293b); color: white; text-align: center; padding: 4rem 2rem; }
+      .mini-hero h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 0.5rem; }
+      .mini-hero p { font-size: 1.1rem; opacity: 0.7; max-width: 500px; margin: 0 auto; }
+      .mini-hero-tags { margin-top: 1.5rem; display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap; }
+      .mini-hero-tag { font-size: 0.8rem; padding: 0.3rem 0.8rem; border-radius: 6px; background: rgba(59,130,246,0.2); color: #93c5fd; }
+      .mini-content { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
+      .pres-section { margin-bottom: 2rem; padding: 2rem; border: 1px solid #e2e8f0; border-radius: 12px; background: white; box-shadow: 0 1px 3px rgba(0,0,0,0.04); }
+      .pres-section-title { font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; border-bottom: 2px solid #e2e8f0; padding-bottom: 0.75rem; }
+      .pres-section-title svg { width: 20px; height: 20px; color: #3b82f6; }
+      .pres-metrics-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; margin-bottom: 1rem; }
+      .pres-metric { padding: 1.25rem; background: #f8fafc; border-radius: 10px; border: 1px solid #e2e8f0; }
+      .pres-metric-label { font-size: 0.7rem; text-transform: uppercase; color: #94a3b8; letter-spacing: 0.5px; margin-bottom: 0.3rem; }
+      .pres-metric-val { font-size: 0.9rem; color: #1e293b; line-height: 1.5; }
+      .pres-big-score { font-size: 2.5rem; font-weight: 700; }
+      .pres-big-score.score-good { color: #059669; } .pres-big-score.score-warn { color: #d97706; } .pres-big-score.score-bad { color: #dc2626; }
+      .pres-sub { font-size: 0.9rem; margin: 0.75rem 0; line-height: 1.6; }
+      .pres-sub ul, .pres-sub ol { padding-left: 1.5rem; margin-top: 0.25rem; } .pres-sub li { margin-bottom: 0.3rem; }
+      .pres-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin: 0.75rem 0; }
+      .pres-table th, .pres-table td { padding: 0.6rem 0.75rem; border: 1px solid #e2e8f0; text-align: left; }
+      .pres-table th { background: #f1f5f9; font-weight: 600; }
+      .pres-tags { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.5rem; }
+      .pres-tag-pos { font-size: 0.8rem; padding: 0.2rem 0.5rem; border-radius: 4px; background: rgba(16,185,129,0.1); color: #059669; }
+      .pres-engines { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+      .pres-engine { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+      .pres-engine-head { color: white; padding: 0.5rem 0.75rem; font-weight: 600; font-size: 0.85rem; text-align: center; }
+      .pres-engine-body { padding: 1rem; font-size: 0.85rem; line-height: 1.5; }
+      .mini-footer { text-align: center; padding: 2rem; font-size: 0.8rem; color: #94a3b8; border-top: 1px solid #e2e8f0; margin-top: 2rem; }
+    </style></head><body>
+    <nav class="mini-nav"><div class="mini-nav-brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>${clientName}</div></nav>
+    <div class="mini-hero"><h1>${clientName}</h1><p>${ps.mission||''}</p><div class="mini-hero-tags">${selectedReports.map(r=>`<span class="mini-hero-tag">${r.label}</span>`).join('')}</div></div>
+    <div class="mini-content">${sections}</div>
+    <div class="mini-footer">Report generato da GEOAudit AI Intelligence &bull; ${new Date().toLocaleDateString('it-IT')}</div>
+    </body></html>`;
+    const w = window.open('', '_blank');
+    w.document.write(html);
+    w.document.close();
+  },
+
+  pageClientPresentation() {
+    const ps = this.presentationState;
+    const cd = this.clientData;
+    const mode = this.presentationMode;
+    const reports = [
+      { key: 'geo', aiKey: 'geo-audit', label: 'GEO Audit', icon: ICONS.globe },
+      { key: 'aeo', aiKey: 'aeo-audit', label: 'AEO Audit', icon: ICONS.target },
+      { key: 'promptTracker', aiKey: 'prompt-tracker', label: 'AI Prompt Tracker', icon: ICONS.zap },
+      { key: 'aiOverview', aiKey: 'ai-overview', label: 'AI Overview', icon: ICONS.eye },
+      { key: 'vectorCheck', aiKey: 'vector-check', label: 'Vector Check', icon: ICONS.checkCircle }
+    ];
+    const hasData = reports.some(r => ps.selectedReports[r.key] && this.aiResults[r.aiKey]);
+
+    const reportToggles = reports.map(r => {
+      const data = this.aiResults[r.aiKey];
+      return `<label class="pres-toggle-row">
+        <input type="checkbox" ${ps.selectedReports[r.key] ? 'checked' : ''} onchange="App.toggleReportSelection('${r.key}')" />
+        <span class="pres-toggle-label">${r.icon} ${r.label}</span>
+        <span class="pres-toggle-status ${data?'pres-has-data':''}">${data?(ps.selectedReports[r.key]?'INCLUSO':'ESCLUSO'):'NO DATI'}</span>
+      </label>`;
+    }).join('');
+
+    if (mode === 'preview') {
+      const { cover, sections } = this.generatePresentationHTML();
+      return `
+        <div class="fade-in pres-preview-wrap">
+          <div class="pres-preview-toolbar">
+            <button class="btn btn-outline btn-sm" onclick="App.presentationMode='config';App.renderApp()">Torna alla Configurazione</button>
+            <div style="display:flex;gap:0.5rem">
+              <button class="btn btn-primary btn-sm" onclick="App.exportPDF()">Esporta PDF (A4)</button>
+              <button class="btn btn-dark btn-sm" onclick="App.openMiniSite()">Apri Mini Sito</button>
+            </div>
+          </div>
+          <div class="pres-preview-container">${cover}${sections}</div>
+        </div>`;
+    }
+
+    return `
+      <div class="fade-in">
+        <div class="dash-header" style="display:flex;align-items:center;justify-content:space-between">
+          <div><h1>${ICONS.presentation} Client Presentation</h1><p>Presenta i risultati in modo professionale: anteprima, mini sito e PDF A4.</p></div>
+          <div style="display:flex;gap:0.5rem">
+            ${hasData?`<button class="btn btn-primary btn-sm" onclick="App.presentationMode='preview';App.renderApp()">Anteprima</button>
+            <button class="btn btn-dark btn-sm" onclick="App.openMiniSite()">Mini Sito</button>
+            <button class="btn btn-outline btn-sm" onclick="App.exportPDF()">PDF A4</button>`:''}
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1rem">
+          <div>
+            <div class="card">
+              <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.edit}</div><div><h3>Configurazione</h3></div></div>
+              <div class="form-group"><label>Nome Cliente / Brand</label><input type="text" class="tool-input" value="${ps.clientName}" oninput="App.presentationState.clientName=this.value" placeholder="Nome del cliente" /></div>
+              <div class="form-group"><label>Mission / Tagline</label><input type="text" class="tool-input" value="${ps.mission}" oninput="App.presentationState.mission=this.value" placeholder="La mission del brand..." /></div>
+            </div>
+            <div class="card">
+              <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.checkCircle}</div><div><h3>Selezione Report</h3><p class="card-desc">Scegli quali analisi includere</p></div></div>
+              ${reportToggles}
+            </div>
+            <div class="card">
+              <div class="card-header-row"><div class="card-icon bg-green">${ICONS.presentation}</div><div><h3>Esporta</h3></div></div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem">
+                <div class="export-card"><h4>PDF (A4)</h4><p>Report impaginato per stampa professionale.</p><button class="btn btn-primary btn-sm btn-block" onclick="App.exportPDF()" ${!hasData?'disabled':''}>Esporta PDF</button></div>
+                <div class="export-card"><h4>Mini Sito</h4><p>Versione web interattiva del report.</p><button class="btn btn-dark btn-sm btn-block" onclick="App.openMiniSite()" ${!hasData?'disabled':''}>Apri Mini Sito</button></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="card" style="min-height:300px">
+              <div class="card-header-row"><div class="card-icon bg-orange">${ICONS.eye}</div><div><h3>Anteprima Rapida</h3></div></div>
+              <div class="pres-preview-mini">
+                <div class="pres-cover-mini">
+                  <div class="pres-cover-mini-logo">${ICONS.globe}</div>
+                  <h2>${ps.clientName || cd.nome || 'Nome Cliente'}</h2>
+                  <p>${ps.mission || 'La tua mission...'}</p>
+                  <div class="pres-cover-mini-tags">${reports.filter(r=>ps.selectedReports[r.key]).map(r=>`<span>${r.label}</span>`).join('')}</div>
+                </div>
+                ${reports.filter(r=>ps.selectedReports[r.key]).map(r=>{
+                  const data = this.aiResults[r.aiKey];
+                  return `<div class="pres-mini-section"><div class="pres-mini-section-title">${r.icon} ${r.label}</div><div class="pres-mini-section-status">${data?'Dati disponibili':'Nessun dato'}</div></div>`;
+                }).join('')}
+                ${!reports.some(r=>ps.selectedReports[r.key])?'<div class="empty-state" style="margin-top:1rem">Seleziona almeno un report.</div>':''}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>`;
   },
 
   pageGeoAudit() {
@@ -854,17 +1043,17 @@ const App = {
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi in corso...</span></div>`;
     return `
       <div class="fade-in">
-        <div class="dash-header">
-          <h1>${ICONS.globe} GEO Audit</h1>
-          <p>Analisi profonda dell'identit&agrave; del brand percepita dai motori AI (Generative Engine Optimization).</p>
-        </div>
-        <div class="card fade-in fade-in-delay-1">
-          <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.globe}</div><div><h3>Dominio Web</h3><p class="card-desc">Inserisci il dominio da analizzare</p></div></div>
-          <div style="display:flex;gap:0.5rem">
-            <input type="text" class="tool-input" id="geo-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
-            <button class="btn btn-primary" onclick="App.runGeoAudit()" ${loading?'disabled':''}>${loading?'<span class="btn-spinner"></span> Analisi...':'Lancia Audit'}</button>
+        <div class="report-hero-card fade-in fade-in-delay-1">
+          <div class="report-hero-gradient gradient-blue-purple"></div>
+          <div class="report-hero-icon">${ICONS.globe}</div>
+          <h2 class="report-hero-title">GEO Audit</h2>
+          <p class="report-hero-desc">Analisi profonda della percezione del brand da parte dei motori AI.</p>
+          <div class="report-hero-input">
+            <input type="text" class="tool-input report-input" id="geo-domain" placeholder="https://iltuosito.it/" />
+            <button class="btn btn-dark btn-block report-btn" onclick="App.runGeoAudit()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Lancia Audit'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
+          ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
         <div class="card fade-in fade-in-delay-2">
           <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.target}</div><div><h3>Identit&agrave; del Brand</h3><p class="card-desc">Mission, Vision e Valori percepiti dai motori AI</p></div></div>
@@ -916,6 +1105,7 @@ const App = {
           <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
             ${['Identit\u00e0','Sentiment','Rilevanza','Competitor','Personas'].map(s=>`<span class="status-pill ${r?'status-pill-done':''}">${s}: ${r?'COMPLETATO':'IN ATTESA'}</span>`).join('')}
           </div>
+          ${r?`<div style="margin-top:1rem;text-align:right"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('geo-audit')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
         </div>
       </div>`;
   },
@@ -927,17 +1117,17 @@ const App = {
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi multi-engine...</span></div>`;
     return `
       <div class="fade-in">
-        <div class="dash-header">
-          <h1>${ICONS.target} AEO Audit <span class="badge pro" style="font-size:0.7rem;vertical-align:middle">PRO</span></h1>
-          <p>Answer Engine Optimization: simulazione multi-motore per analizzare la percezione del brand.</p>
-        </div>
-        <div class="card fade-in fade-in-delay-1">
-          <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.target}</div><div><h3>Dominio Web</h3><p class="card-desc">Analisi con 3 motori AI</p></div></div>
-          <div style="display:flex;gap:0.5rem">
-            <input type="text" class="tool-input" id="aeo-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
-            <button class="btn btn-primary" onclick="App.runAeoAudit()" ${loading?'disabled':''}>${loading?'<span class="btn-spinner"></span> Analisi...':'Lancia AEO Audit'}</button>
+        <div class="report-hero-card fade-in fade-in-delay-1">
+          <div class="report-hero-gradient gradient-green-teal"></div>
+          <div class="report-hero-icon">${ICONS.target}</div>
+          <h2 class="report-hero-title">AEO Audit <span class="badge pro" style="font-size:0.6rem;vertical-align:middle">PRO</span></h2>
+          <p class="report-hero-desc">Simulazione multi-motore per analizzare la percezione del brand.</p>
+          <div class="report-hero-input">
+            <input type="text" class="tool-input report-input" id="aeo-domain" placeholder="https://iltuosito.it/" />
+            <button class="btn btn-dark btn-block report-btn" onclick="App.runAeoAudit()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Lancia AEO Audit'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
+          ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
         <div class="card fade-in fade-in-delay-2">
           <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.eye}</div><div><h3>Simulazione Multi-Engine</h3><p class="card-desc">Confronto risposte ChatGPT, Perplexity e Gemini</p></div></div>
@@ -962,6 +1152,7 @@ const App = {
               <div class="metric-card"><div style="font-size:0.85rem">${r?.schemaOrg||'<span class="empty-state">Lancia l\'audit per suggerimenti Schema.org.</span>'}</div></div>
             </div>
           </div>
+          ${r?`<div style="margin-top:1.5rem;text-align:right"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('aeo-audit')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
         </div>
       </div>`;
   },
@@ -973,14 +1164,17 @@ const App = {
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Tracking in corso...</span></div>`;
     return `
       <div class="fade-in">
-        <div class="dash-header"><h1>${ICONS.zap} AI Prompt Tracker</h1><p>Verifica se il brand &egrave; considerato una fonte autorevole nelle risposte AI.</p></div>
-        <div class="card fade-in fade-in-delay-1">
-          <div class="card-header-row"><div class="card-icon bg-yellow">${ICONS.zap}</div><div><h3>Dominio Web</h3><p class="card-desc">Tracking citazioni AI</p></div></div>
-          <div style="display:flex;gap:0.5rem">
-            <input type="text" class="tool-input" id="prompt-tracker-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
-            <button class="btn btn-primary" onclick="App.runPromptTracker()" ${loading?'disabled':''}>${loading?'<span class="btn-spinner"></span> Tracking...':'Avvia Tracking'}</button>
+        <div class="report-hero-card fade-in fade-in-delay-1">
+          <div class="report-hero-gradient gradient-yellow-orange"></div>
+          <div class="report-hero-icon">${ICONS.zap}</div>
+          <h2 class="report-hero-title">AI Prompt Tracker</h2>
+          <p class="report-hero-desc">Verifica se il brand &egrave; citato come fonte autorevole nelle risposte AI.</p>
+          <div class="report-hero-input">
+            <input type="text" class="tool-input report-input" id="prompt-tracker-domain" placeholder="https://iltuosito.it/" />
+            <button class="btn btn-dark btn-block report-btn" onclick="App.runPromptTracker()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Avvia Tracking'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
+          ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
           <div class="card fade-in fade-in-delay-2">
@@ -1003,6 +1197,7 @@ const App = {
           <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.search}</div><div><h3>Query Generate &amp; Citazioni</h3><p class="card-desc">Query settoriali testate per la citazione del brand</p></div></div>
           ${loading?LS:`<table class="data-table"><thead><tr><th style="text-align:left">#</th><th style="text-align:left">Query Generata</th><th style="text-align:center">Stato</th><th style="text-align:center">Sentiment</th></tr></thead>
           <tbody>${r?.queries?.length?r.queries.map((q,i)=>`<tr><td>${i+1}</td><td>${q.query}</td><td style="text-align:center"><span class="status-dot ${q.citato?'dot-green':'dot-red'}"></span>${q.citato?'Citato':'Non citato'}</td><td style="text-align:center"><span class="sentiment-tag sentiment-${q.sentiment}">${q.sentiment}</span></td></tr>`).join(''):'<tr><td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia il tracking per visualizzare i risultati.</td></tr>'}</tbody></table>`}
+          ${r?`<div style="margin-top:1rem;text-align:right"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('prompt-tracker')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
         </div>
       </div>`;
   },
@@ -1014,14 +1209,17 @@ const App = {
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi in corso...</span></div>`;
     return `
       <div class="fade-in">
-        <div class="dash-header"><h1>${ICONS.eye} AI Overview Tracker (SGE)</h1><p>Ottimizzazione per gli snapshot AI di Google (Search Generative Experience).</p></div>
-        <div class="card fade-in fade-in-delay-1">
-          <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.eye}</div><div><h3>Dominio Web</h3><p class="card-desc">Analizza visibilit&agrave; negli snippet AI di Google</p></div></div>
-          <div style="display:flex;gap:0.5rem">
-            <input type="text" class="tool-input" id="aio-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
-            <button class="btn btn-primary" onclick="App.runAiOverview()" ${loading?'disabled':''}>${loading?'<span class="btn-spinner"></span> Analisi...':'Analizza AI Overview'}</button>
+        <div class="report-hero-card fade-in fade-in-delay-1">
+          <div class="report-hero-gradient gradient-purple-pink"></div>
+          <div class="report-hero-icon">${ICONS.eye}</div>
+          <h2 class="report-hero-title">AI Overview Tracker (SGE)</h2>
+          <p class="report-hero-desc">Ottimizzazione per gli snapshot AI di Google.</p>
+          <div class="report-hero-input">
+            <input type="text" class="tool-input report-input" id="aio-domain" placeholder="https://iltuosito.it/" />
+            <button class="btn btn-dark btn-block report-btn" onclick="App.runAiOverview()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Analizza AI Overview'}</button>
           </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
+          ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
         <div class="card fade-in fade-in-delay-2">
           <div class="card-header-row"><div class="card-icon bg-purple">${ICONS.search}</div><div><h3>Analisi Keyword &amp; Win Probability</h3><p class="card-desc">Keyword che attivano risposte AI</p></div></div>
@@ -1038,6 +1236,7 @@ const App = {
             ${loading?LS:(r?.fixes?.length?`<ul class="fix-list">${r.fixes.map((f,i)=>`<li><span class="fix-number">${i+1}</span>${f}</li>`).join('')}</ul>`:'<div class="empty-state">Lancia l\'analisi per suggerimenti.</div>')}
           </div>
         </div>
+        ${r?`<div style="text-align:right;margin-top:0.5rem"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('ai-overview')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
       </div>`;
   },
 
@@ -1048,13 +1247,18 @@ const App = {
     const LS = `<div class="loading-spinner"><div class="spinner"></div><span>Analisi vettoriale...</span></div>`;
     return `
       <div class="fade-in">
-        <div class="dash-header"><h1>${ICONS.checkCircle} Vector Check (Analisi Semantica)</h1><p>Analisi tecnica degli embeddings e della rilevanza vettoriale del contenuto.</p></div>
-        <div class="card fade-in fade-in-delay-1">
-          <div class="card-header-row"><div class="card-icon bg-teal">${ICONS.checkCircle}</div><div><h3>Input Analisi</h3><p class="card-desc">URL e keyword target</p></div></div>
-          <div class="form-group"><label>URL Specifica</label><input type="text" class="tool-input" id="vc-url" placeholder="https://www.esempio.it/pagina" /></div>
-          <div class="form-group"><label>Keyword Target</label><input type="text" class="tool-input" id="vc-keyword" placeholder="Es. consulenza digitale per PMI" /></div>
-          <button class="btn btn-primary btn-block" onclick="App.runVectorCheck()" ${loading?'disabled':''}>${loading?'<span class="btn-spinner"></span> Analisi...':'Avvia Vector Check'}</button>
+        <div class="report-hero-card fade-in fade-in-delay-1">
+          <div class="report-hero-gradient gradient-teal-blue"></div>
+          <div class="report-hero-icon">${ICONS.checkCircle}</div>
+          <h2 class="report-hero-title">Vector Check</h2>
+          <p class="report-hero-desc">Analisi tecnica degli embeddings e della rilevanza vettoriale.</p>
+          <div class="report-hero-input">
+            <input type="text" class="tool-input report-input" id="vc-url" placeholder="https://www.esempio.it/pagina" />
+            <input type="text" class="tool-input report-input" id="vc-keyword" style="margin-top:0.5rem" placeholder="Keyword target: es. consulenza digitale" />
+            <button class="btn btn-dark btn-block report-btn" onclick="App.runVectorCheck()" ${loading?'disabled':''}>${loading?`<span class="btn-spinner"></span>`:'Avvia Vector Check'}</button>
+          </div>
           ${err?`<div class="error-banner">${err}</div>`:''}
+          ${loading?`<div class="report-loading-bar"><div class="report-loading-progress"></div></div>`:''}
         </div>
         <div class="card fade-in fade-in-delay-2">
           <div class="card-header-row"><div class="card-icon bg-blue">${ICONS.target}</div><div><h3>Semantic Relevance Score</h3></div></div>
@@ -1080,6 +1284,7 @@ const App = {
           <div class="card-header-row"><div class="card-icon bg-green">${ICONS.checkCircle}</div><div><h3>Consigli di Ottimizzazione</h3><p class="card-desc">Migliorare la densit&agrave; semantica</p></div></div>
           ${loading?LS:(r?.consigli?.length?`<ul class="fix-list">${r.consigli.map((c,i)=>`<li><span class="fix-number">${i+1}</span>${c}</li>`).join('')}</ul>`:'<div class="empty-state">Avvia il Vector Check per consigli.</div>')}
         </div>
+        ${r?`<div style="text-align:right;margin-top:0.5rem"><button class="btn btn-primary btn-sm" onclick="App.addToPresentation('vector-check')">${ICONS.presentation} Aggiungi alla Presentazione</button></div>`:''}
       </div>`;
   },
 

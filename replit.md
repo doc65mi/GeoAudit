@@ -4,9 +4,11 @@
 GEOAudit AI Intelligence is a SaaS web application for AI-powered brand perception analysis. It features user authentication, a full dashboard with dark sidebar navigation, subscription management, and multiple AI tools for SEO, AEO, content creation, and social media.
 
 ## Recent Changes
+- 2026-02-08: Redesigned report hero cards with centered icon, gradient top bar, centered title (matching first release design)
+- 2026-02-08: Added "Aggiungi alla Presentazione" button on all 5 SEO tool pages (appears after analysis completes)
+- 2026-02-08: Rebuilt Client Presentation with real AI data rendering, A4 PDF export (window.print), mini-site web view (opens in new tab), config/preview modes, report toggles
+- 2026-02-08: All SEO tool pages now have full AI integration with loading states, error handling, result rendering
 - 2026-02-08: Rebuilt complete frontend with dark sidebar layout matching original design
-- 2026-02-08: Added all sections: SEO for AI (GEO Audit, AEO Audit, AI Prompt Tracker, AI Overview, Vector Check), Content Tools (Visual Studio, Social Media AI with Wizard Post/LinkedIn/Facebook/Instagram), Dashboard (Scheda Cliente, Client Presentation), Impostazioni
-- 2026-02-08: Hash-based routing for page persistence
 - 2026-02-08: Full-stack setup with Express + TypeScript backend, Replit Auth, PostgreSQL database, subscription system
 
 ## User Preferences
