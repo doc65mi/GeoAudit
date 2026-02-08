@@ -58,3 +58,6 @@ GeoAudit is a SaaS web application for geographic auditing services. It features
 - `GET /api/plans` - Get available subscription plans
 - `GET /api/subscription` - Get user's current subscription (protected)
 - `POST /api/subscription/create` - Create/update subscription (protected)
+
+## Notes
+- Stripe integration was not connected. The subscription system currently works locally (plan selection is saved to DB). When ready to accept real payments, connect Stripe via the integrations panel to enable checkout and webhooks.
