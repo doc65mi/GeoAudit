@@ -28,9 +28,33 @@ const App = {
 
   validPages: ['scheda-cliente','client-presentation','geo-audit','aeo-audit','ai-prompt-tracker','ai-overview','vector-check','visual-studio','wizard-post','linkedin','facebook','instagram','impostazioni'],
 
+  loadFromStorage() {
+    try {
+      const saved = localStorage.getItem('geoaudit_data');
+      if (saved) {
+        const data = JSON.parse(saved);
+        if (data.clientData) Object.assign(this.clientData, data.clientData);
+        if (data.presentationState) Object.assign(this.presentationState, data.presentationState);
+        if (data.settingsState) Object.assign(this.settingsState, data.settingsState);
+      }
+    } catch (e) { console.error('Error loading from storage:', e); }
+  },
+
+  saveToStorage() {
+    try {
+      localStorage.setItem('geoaudit_data', JSON.stringify({
+        clientData: this.clientData,
+        presentationState: this.presentationState,
+        settingsState: this.settingsState,
+      }));
+    } catch (e) { console.error('Error saving to storage:', e); }
+  },
+
   async init() {
     const hash = window.location.hash.replace('#','');
     if (this.validPages.includes(hash)) this.currentPage = hash;
+
+    this.loadFromStorage();
 
     window.addEventListener('hashchange', () => {
       const h = window.location.hash.replace('#','');
@@ -175,6 +199,7 @@ const App = {
   },
 
   renderApp() {
+    this.saveToStorage();
     const app = document.getElementById("app");
     const name = this.user.firstName || this.user.email || "Utente";
     const plan = this.subscription?.plan || "free";
@@ -315,45 +340,319 @@ const App = {
     return (pages[this.currentPage] || this.pageGeoAudit).call(this);
   },
 
+  clientData: {
+    nome: '', descrizione: '', target: '', sito: '', socialLinks: '',
+    knowledgeBase: '',
+    brandVoice: { formale: 50, amichevole: 50, umoristico: 50, tecnico: 50 },
+    preferredWords: '', forbiddenWords: '',
+    competitors: [],
+    storicoAnalisi: []
+  },
+
+  presentationState: {
+    clientName: '', mission: '', notes: '', fullscreen: false,
+    selectedReports: { geo: true, aeo: true, promptTracker: true, aiOverview: true, vectorCheck: true }
+  },
+
+  wizardState: { step: 1, platform: 'linkedin', objective: 'awareness', persona: '', topic: '', context: '', framework: 'hero', generatedText: '' },
+
+  settingsState: {
+    geminiKey: '', openaiKey: '', perplexityKey: '',
+    costInput: '0.15', costOutput: '0.60', costSearch: '5.00', totalSpent: 0
+  },
+
+  addCompetitor() {
+    const n = document.getElementById('comp-name');
+    const u = document.getElementById('comp-url');
+    if (n && n.value.trim()) {
+      this.clientData.competitors.push({ nome: n.value.trim(), url: (u && u.value.trim()) || '' });
+      this.renderApp();
+    }
+  },
+
+  removeCompetitor(i) {
+    this.clientData.competitors.splice(i, 1);
+    this.renderApp();
+  },
+
+  toggleStoricoPresentation(i) {
+    if (this.clientData.storicoAnalisi[i]) {
+      this.clientData.storicoAnalisi[i].includedInPresentation = !this.clientData.storicoAnalisi[i].includedInPresentation;
+      this.renderApp();
+    }
+  },
+
+  wizardNext() { if (this.wizardState.step < 4) { this.wizardState.step++; this.renderApp(); } },
+  wizardPrev() { if (this.wizardState.step > 1) { this.wizardState.step--; this.renderApp(); } },
+
+  copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => alert('Copiato negli appunti!')).catch(() => alert('Errore nella copia'));
+  },
+
+  togglePresentationFullscreen() {
+    this.presentationState.fullscreen = !this.presentationState.fullscreen;
+    this.renderApp();
+  },
+
+  toggleReportSelection(key) {
+    this.presentationState.selectedReports[key] = !this.presentationState.selectedReports[key];
+    this.renderApp();
+  },
+
+  resetSpending() {
+    this.settingsState.totalSpent = 0;
+    this.renderApp();
+  },
+
+  exportProject() {
+    const data = { clientData: this.clientData, storicoAnalisi: this.clientData.storicoAnalisi, presentationState: this.presentationState, settingsState: { ...this.settingsState, geminiKey: '', openaiKey: '', perplexityKey: '' } };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'geoaudit-project.json'; a.click();
+  },
+
+  importProject() {
+    const input = document.createElement('input'); input.type = 'file'; input.accept = '.json,.geoaudit';
+    input.onchange = (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const data = JSON.parse(ev.target.result);
+          if (data.clientData) Object.assign(this.clientData, data.clientData);
+          if (data.presentationState) Object.assign(this.presentationState, data.presentationState);
+          if (data.settingsState) { const { geminiKey, openaiKey, perplexityKey, ...rest } = data.settingsState; Object.assign(this.settingsState, rest); }
+          this.renderApp();
+          alert('Progetto importato con successo!');
+        } catch (err) { alert('Errore nel file di importazione'); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  },
+
+  handleKBDrop(e) {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    for (const file of files) {
+      if (/\.(txt|md|csv|json)$/i.test(file.name)) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.clientData.knowledgeBase += (this.clientData.knowledgeBase ? '\n\n' : '') + '--- ' + file.name + ' ---\n' + ev.target.result;
+          const el = document.getElementById('kb-textarea');
+          if (el) el.value = this.clientData.knowledgeBase;
+        };
+        reader.readAsText(file);
+      }
+    }
+  },
+
   pageSchedaCliente() {
-    const name = this.user.firstName || this.user.email || "Utente";
-    const plan = this.subscription?.plan || "free";
-    const planLabel = plan === "free" ? "Free" : plan === "pro" ? "Professional" : "Enterprise";
+    const cd = this.clientData;
+    const comps = cd.competitors.map((c, i) => `
+      <div style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+        <span style="flex:1;font-weight:600">${c.nome}</span>
+        <span style="flex:1;color:var(--text-light);font-size:0.85rem">${c.url}</span>
+        <button class="btn btn-ghost btn-sm" style="color:var(--danger)" onclick="App.removeCompetitor(${i})">Rimuovi</button>
+      </div>
+    `).join('');
+
+    const storico = cd.storicoAnalisi.length ? cd.storicoAnalisi.map((a, i) => `
+      <div style="display:flex;align-items:center;gap:0.75rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:0.8rem;color:var(--text-light)">${a.date || ''}</span>
+        <span style="flex:1;font-weight:500">${a.type || ''} - ${a.label || ''}</span>
+        <span style="font-size:0.75rem;padding:0.2rem 0.6rem;border-radius:4px;background:${a.status === 'OK' ? 'var(--success)' : a.status === 'WARNING' ? 'var(--warning)' : 'var(--danger)'};color:white">${a.status || 'N/A'}</span>
+        <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.8rem;cursor:pointer">
+          <input type="checkbox" ${a.includedInPresentation ? 'checked' : ''} onchange="App.toggleStoricoPresentation(${i})" /> Presentazione
+        </label>
+      </div>
+    `).join('') : '<div class="empty-state">Nessuna analisi effettuata. Lancia il tuo primo audit!</div>';
+
     return `
-      <div class="dash-header fade-in">
-        <h1>Benvenuto, ${name}!</h1>
-        <p>Ecco il riepilogo della tua attivit&agrave; su GEOAudit</p>
-      </div>
-      <div class="stats-grid fade-in fade-in-delay-1">
-        <div class="stat-card"><div class="stat-label">Audit Completati</div><div class="stat-value blue">0</div></div>
-        <div class="stat-card"><div class="stat-label">Report Generati</div><div class="stat-value green">0</div></div>
-        <div class="stat-card"><div class="stat-label">Contenuti Creati</div><div class="stat-value orange">0</div></div>
-      </div>
-      <div class="card fade-in fade-in-delay-2">
-        <h3>Il Tuo Abbonamento</h3>
-        <div class="plan-banner">
-          <div><div class="plan-name">Piano ${planLabel}</div></div>
-          <div class="plan-badge">&bull; Attivo</div>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.user} Scheda Cliente</h1>
+          <p>Il cervello del progetto. Definisci i dati che influenzano tutti i moduli.</p>
         </div>
-        ${plan === 'free' ? `<div style="margin-top:1rem"><button class="btn btn-primary btn-sm" onclick="App.navigate('impostazioni')">Aggiorna Piano</button></div>` : ''}
-      </div>
-      <div class="card fade-in fade-in-delay-3">
-        <h3>Attivit&agrave; Recente</h3>
-        <div class="empty-state">Nessuna attivit&agrave; recente. Inizia lanciando il tuo primo audit!</div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Dati Generali</h3>
+          <div class="form-group">
+            <label>Nome Cliente / Brand</label>
+            <input type="text" class="tool-input" value="${cd.nome}" oninput="App.clientData.nome=this.value" placeholder="Es. Acme Corp" />
+          </div>
+          <div class="form-group">
+            <label>Descrizione Attivit&agrave; (USP)</label>
+            <textarea class="tool-textarea" oninput="App.clientData.descrizione=this.value" placeholder="Descrivi l'attivit&agrave; principale e la proposta di valore unica...">${cd.descrizione}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Target Audience</label>
+            <input type="text" class="tool-input" value="${cd.target}" oninput="App.clientData.target=this.value" placeholder="Es. PMI italiane, 25-45 anni, settore tech" />
+          </div>
+          <div class="form-group">
+            <label>Sito Web</label>
+            <input type="text" class="tool-input" value="${cd.sito}" oninput="App.clientData.sito=this.value" placeholder="https://www.esempio.it" />
+          </div>
+          <div class="form-group">
+            <label>Social Links</label>
+            <input type="text" class="tool-input" value="${cd.socialLinks}" oninput="App.clientData.socialLinks=this.value" placeholder="LinkedIn, Facebook, Instagram URLs (separati da virgola)" />
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-2">
+          <h3>Knowledge Base (RAG Lite)</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Inserisci informazioni specifiche non pubbliche. Questo contenuto verr&agrave; iniettato in tutti i prompt AI. Supporto Drag &amp; Drop per file .txt, .md, .csv, .json</p>
+          <div style="border:2px dashed var(--border);border-radius:8px;padding:1rem;margin-bottom:0.5rem;text-align:center;color:var(--text-light);font-size:0.85rem" ondragover="event.preventDefault();this.style.borderColor='var(--primary)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="App.handleKBDrop(event);this.style.borderColor='var(--border)'">
+            Trascina qui i file .txt, .md, .csv, .json per importarli
+          </div>
+          <textarea id="kb-textarea" class="tool-textarea" style="min-height:200px" oninput="App.clientData.knowledgeBase=this.value" placeholder="Incolla qui policy interne, storia del fondatore, FAQ, interviste...">${cd.knowledgeBase}</textarea>
+        </div>
+
+        <div class="card fade-in fade-in-delay-3">
+          <h3>Brand Voice Engine</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Configura lo stile di comunicazione del brand con i cursori.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+            <div class="form-group">
+              <label>Informale &harr; Formale: <strong>${cd.brandVoice.formale}%</strong></label>
+              <input type="range" min="0" max="100" value="${cd.brandVoice.formale}" oninput="App.clientData.brandVoice.formale=parseInt(this.value);this.previousElementSibling.querySelector('strong').textContent=this.value+'%'" style="width:100%" />
+            </div>
+            <div class="form-group">
+              <label>Distaccato &harr; Amichevole: <strong>${cd.brandVoice.amichevole}%</strong></label>
+              <input type="range" min="0" max="100" value="${cd.brandVoice.amichevole}" oninput="App.clientData.brandVoice.amichevole=parseInt(this.value);this.previousElementSibling.querySelector('strong').textContent=this.value+'%'" style="width:100%" />
+            </div>
+            <div class="form-group">
+              <label>Serio &harr; Umoristico: <strong>${cd.brandVoice.umoristico}%</strong></label>
+              <input type="range" min="0" max="100" value="${cd.brandVoice.umoristico}" oninput="App.clientData.brandVoice.umoristico=parseInt(this.value);this.previousElementSibling.querySelector('strong').textContent=this.value+'%'" style="width:100%" />
+            </div>
+            <div class="form-group">
+              <label>Semplice &harr; Tecnico: <strong>${cd.brandVoice.tecnico}%</strong></label>
+              <input type="range" min="0" max="100" value="${cd.brandVoice.tecnico}" oninput="App.clientData.brandVoice.tecnico=parseInt(this.value);this.previousElementSibling.querySelector('strong').textContent=this.value+'%'" style="width:100%" />
+            </div>
+          </div>
+          <div class="form-group" style="margin-top:1rem">
+            <label>Parole Preferite (Preferred Words)</label>
+            <textarea class="tool-textarea" style="min-height:80px" oninput="App.clientData.preferredWords=this.value" placeholder="Parole che l'AI deve privilegiare (una per riga o separate da virgola)">${cd.preferredWords}</textarea>
+          </div>
+          <div class="form-group">
+            <label>Parole Vietate (Anti-AI / Forbidden Words)</label>
+            <textarea class="tool-textarea" style="min-height:80px" oninput="App.clientData.forbiddenWords=this.value" placeholder="Parole vietate nei testi generati, es: delve, landscape, unlock...">${cd.forbiddenWords}</textarea>
+          </div>
+        </div>
+
+        <div class="card fade-in">
+          <h3>Competitors</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Aggiungi i competitor per analisi comparative nel GEO Audit.</p>
+          <div style="display:flex;gap:0.5rem;margin-bottom:1rem">
+            <input type="text" id="comp-name" class="tool-input" style="margin-bottom:0;flex:1" placeholder="Nome competitor" />
+            <input type="text" id="comp-url" class="tool-input" style="margin-bottom:0;flex:1" placeholder="URL competitor" />
+            <button class="btn btn-primary btn-sm" onclick="App.addCompetitor()">Aggiungi</button>
+          </div>
+          ${comps || '<div class="empty-state">Nessun competitor aggiunto.</div>'}
+        </div>
+
+        <div class="card fade-in">
+          <h3>Storico Analisi</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Log cronologico delle analisi effettuate. Attiva il toggle per includerle nella Client Presentation.</p>
+          ${storico}
+        </div>
       </div>
     `;
   },
 
   pageClientPresentation() {
+    const ps = this.presentationState;
+    const reports = [
+      { key: 'geo', label: 'GEO Audit' },
+      { key: 'aeo', label: 'AEO Audit' },
+      { key: 'promptTracker', label: 'AI Prompt Tracker' },
+      { key: 'aiOverview', label: 'AI Overview' },
+      { key: 'vectorCheck', label: 'Vector Check' }
+    ];
+    const reportToggles = reports.map(r => `
+      <label style="display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border);cursor:pointer">
+        <input type="checkbox" ${ps.selectedReports[r.key] ? 'checked' : ''} onchange="App.toggleReportSelection('${r.key}')" />
+        <span style="flex:1">${r.label}</span>
+        <span style="font-size:0.75rem;padding:0.15rem 0.5rem;border-radius:4px;background:${ps.selectedReports[r.key] ? 'var(--success)' : 'var(--border)'};color:${ps.selectedReports[r.key] ? 'white' : 'var(--text-light)'}">${ps.selectedReports[r.key] ? 'INCLUSO' : 'ESCLUSO'}</span>
+      </label>
+    `).join('');
+
+    const selectedList = reports.filter(r => ps.selectedReports[r.key]).map(r => `
+      <div style="padding:1.5rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);margin-bottom:1rem">
+        <h4 style="margin-bottom:0.5rem">${r.label}</h4>
+        <p style="color:var(--text-light);font-size:0.85rem">I dati del report ${r.label} verranno visualizzati qui.</p>
+      </div>
+    `).join('');
+
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.presentation}</div>
-          <h2>Client Presentation</h2>
-          <p class="tool-desc">Genera presentazioni professionali per i tuoi clienti basate sui dati di audit e analisi AI.</p>
-          <input type="text" class="tool-input" placeholder="Nome del cliente" />
-          <input type="text" class="tool-input" placeholder="URL del sito web" />
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Genera Presentazione</button>
+      <div class="fade-in" ${ps.fullscreen ? 'style="position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:var(--bg);overflow-y:auto;padding:2rem"' : ''}>
+        <div class="dash-header" style="display:flex;align-items:center;justify-content:space-between">
+          <div>
+            <h1>${ICONS.presentation} Client Presentation</h1>
+            <p>Presenta i risultati al cliente in modo professionale e interattivo.</p>
+          </div>
+          <div style="display:flex;gap:0.5rem">
+            <button class="btn ${ps.fullscreen ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.togglePresentationFullscreen()">
+              ${ps.fullscreen ? 'Esci Fullscreen' : 'Fullscreen'}
+            </button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem;margin-top:1.5rem">
+          <div>
+            <div class="card">
+              <h3>Modalit&agrave; Web - Configurazione</h3>
+              <div class="form-group">
+                <label>Nome Cliente</label>
+                <input type="text" class="tool-input" value="${ps.clientName}" oninput="App.presentationState.clientName=this.value" placeholder="Nome del cliente" />
+              </div>
+              <div class="form-group">
+                <label>Mission / Tagline</label>
+                <input type="text" class="tool-input" value="${ps.mission}" oninput="App.presentationState.mission=this.value" placeholder="La mission del brand..." />
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Selezione Report</h3>
+              <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Scegli quali analisi includere nella presentazione.</p>
+              ${reportToggles}
+            </div>
+
+            <div class="card">
+              <h3>Modalit&agrave; Stampa (PDF)</h3>
+              <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:0.75rem">Esporta la presentazione in formato A4 con copertina personalizzata.</p>
+              <div class="form-group">
+                <label>Nome Brand (Copertina)</label>
+                <input type="text" class="tool-input" value="${ps.clientName}" placeholder="Nome per la copertina del PDF" />
+              </div>
+              <div class="form-group">
+                <label>Data Report</label>
+                <input type="date" class="tool-input" value="${new Date().toISOString().split('T')[0]}" />
+              </div>
+              <button class="btn btn-dark btn-block" onclick="alert('Esportazione PDF in arrivo! Formato A4 Portrait.')">
+                Esporta PDF (A4)
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="card" style="min-height:300px">
+              <h3>Anteprima Presentazione</h3>
+              <div style="background:linear-gradient(135deg,#1e293b,#0f172a);border-radius:12px;padding:2.5rem;text-align:center;color:white;margin-bottom:1.5rem">
+                <h2 style="font-size:1.8rem;margin-bottom:0.5rem;color:var(--primary)">${ps.clientName || 'Nome Cliente'}</h2>
+                <p style="opacity:0.8;font-size:1rem">${ps.mission || 'La tua mission qui...'}</p>
+                <div style="margin-top:1rem;display:flex;justify-content:center;gap:1rem;font-size:0.8rem;opacity:0.6">
+                  ${reports.filter(r => ps.selectedReports[r.key]).map(r => `<span>${r.label}</span>`).join('')}
+                </div>
+              </div>
+              ${selectedList || '<div class="empty-state">Seleziona almeno un report da includere.</div>'}
+            </div>
+          </div>
+        </div>
+
+        <div style="position:fixed;bottom:1.5rem;right:1.5rem;width:320px;z-index:100">
+          <div class="card" style="box-shadow:var(--shadow-lg);border:1px solid var(--primary)">
+            <h4 style="margin-bottom:0.5rem;display:flex;align-items:center;gap:0.5rem">${ICONS.edit} Note Rapide</h4>
+            <textarea class="tool-textarea" style="min-height:100px;font-size:0.85rem" oninput="App.presentationState.notes=this.value" placeholder="Appunti durante la presentazione...">${ps.notes}</textarea>
+          </div>
         </div>
       </div>
     `;
@@ -361,13 +660,105 @@ const App = {
 
   pageGeoAudit() {
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.globe}</div>
-          <h2>GEO Audit</h2>
-          <p class="tool-desc">Analisi profonda della percezione del brand da parte dei motori AI.</p>
-          <input type="text" class="tool-input" id="geo-url" placeholder="iltuosito.it" />
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Lancia Audit</button>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.globe} GEO Audit</h1>
+          <p>Analisi profonda dell'identit&agrave; del brand percepita dai motori AI (Generative Engine Optimization).</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Dominio Web</h3>
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" class="tool-input" id="geo-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
+            <button class="btn btn-dark" onclick="alert('Analisi GEO in elaborazione...')">Lancia Audit</button>
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-2">
+          <h3>Identit&agrave; del Brand</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Mission, Vision e Valori percepiti dai motori AI.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
+            <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+              <div style="font-size:0.75rem;text-transform:uppercase;color:var(--text-light);margin-bottom:0.5rem">Mission</div>
+              <div class="empty-state" style="font-size:0.85rem">In attesa di analisi...</div>
+            </div>
+            <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+              <div style="font-size:0.75rem;text-transform:uppercase;color:var(--text-light);margin-bottom:0.5rem">Vision</div>
+              <div class="empty-state" style="font-size:0.85rem">In attesa di analisi...</div>
+            </div>
+            <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+              <div style="font-size:0.75rem;text-transform:uppercase;color:var(--text-light);margin-bottom:0.5rem">Valori</div>
+              <div class="empty-state" style="font-size:0.85rem">In attesa di analisi...</div>
+            </div>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+          <div class="card fade-in fade-in-delay-3">
+            <h3>Sentiment Analysis</h3>
+            <div style="text-align:center;padding:1.5rem">
+              <div style="font-size:3rem;font-weight:700;color:var(--primary)">--</div>
+              <div style="font-size:0.85rem;color:var(--text-light)">Punteggio 0-100</div>
+              <div style="margin-top:1rem;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:0%;background:var(--gradient-bar);border-radius:4px;transition:width 0.5s"></div>
+              </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-top:0.5rem">
+              <div>
+                <div style="font-size:0.75rem;color:var(--success)">Keyword Positive</div>
+                <div class="empty-state" style="font-size:0.8rem">--</div>
+              </div>
+              <div>
+                <div style="font-size:0.75rem;color:var(--danger)">Keyword Negative</div>
+                <div class="empty-state" style="font-size:0.8rem">--</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card fade-in fade-in-delay-3">
+            <h3>Rilevanza Locale / Internazionale</h3>
+            <div style="padding:1rem">
+              <div style="display:flex;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+                <span>Copertura Locale</span>
+                <span style="font-size:0.8rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--border);color:var(--text-light)">IN ATTESA</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+                <span>Presenza Internazionale</span>
+                <span style="font-size:0.8rem;padding:0.2rem 0.6rem;border-radius:4px;background:var(--border);color:var(--text-light)">IN ATTESA</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card fade-in">
+          <h3>Competitor Identificati</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Rivali diretti identificati dall'AI in base all'analisi del dominio.</p>
+          <div class="empty-state">Lancia l'audit per identificare i competitor.</div>
+        </div>
+
+        <div class="card fade-in">
+          <h3>Buyer Personas</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">3 profili target generati automaticamente dall'analisi del sito.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
+            ${[1,2,3].map(i => `
+              <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center">
+                <div style="width:48px;height:48px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 0.75rem">${ICONS.user}</div>
+                <div style="font-weight:600;margin-bottom:0.25rem">Persona ${i}</div>
+                <div style="font-size:0.85rem;color:var(--text-light)">In attesa di analisi...</div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="card fade-in">
+          <h3>Output &amp; Status</h3>
+          <div style="display:flex;gap:0.75rem;flex-wrap:wrap">
+            ${['Identit&agrave;', 'Sentiment', 'Rilevanza', 'Competitor', 'Personas'].map(s => `
+              <span style="font-size:0.8rem;padding:0.3rem 0.8rem;border-radius:6px;background:var(--border);color:var(--text-light)">
+                ${s}: IN ATTESA
+              </span>
+            `).join('')}
+          </div>
         </div>
       </div>
     `;
@@ -375,14 +766,78 @@ const App = {
 
   pageAeoAudit() {
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.target}</div>
-          <h2>AEO Audit <span class="badge pro" style="font-size:0.7rem;vertical-align:middle">PRO</span></h2>
-          <p class="tool-desc">Answer Engine Optimization: analizza come il tuo contenuto viene utilizzato nelle risposte AI.</p>
-          <input type="text" class="tool-input" placeholder="iltuosito.it" />
-          <input type="text" class="tool-input" placeholder="Keyword principale" />
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Lancia AEO Audit</button>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.target} AEO Audit <span class="badge pro" style="font-size:0.7rem;vertical-align:middle">PRO</span></h1>
+          <p>Answer Engine Optimization: simulazione multi-motore per analizzare la percezione del brand.</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Dominio Web</h3>
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" class="tool-input" id="aeo-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
+            <button class="btn btn-dark" onclick="alert('Analisi AEO in elaborazione...')">Lancia AEO Audit</button>
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-2">
+          <h3>Simulazione Multi-Engine</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Confronto delle risposte tra ChatGPT, Perplexity e Gemini sulla reputazione del brand.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
+            ${['ChatGPT', 'Perplexity', 'Gemini'].map(engine => `
+              <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden">
+                <div style="background:var(--sidebar-bg);color:white;padding:0.75rem 1rem;font-weight:600;font-size:0.9rem;text-align:center">${engine}</div>
+                <div style="padding:1rem">
+                  <div class="empty-state" style="font-size:0.85rem;min-height:100px">In attesa di analisi...</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-3">
+          <h3>Confronto Metriche</h3>
+          <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border)">
+                <th style="text-align:left;padding:0.75rem">Metrica</th>
+                <th style="text-align:center;padding:0.75rem">ChatGPT</th>
+                <th style="text-align:center;padding:0.75rem">Perplexity</th>
+                <th style="text-align:center;padding:0.75rem">Gemini</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${['Visibilit&agrave;', 'Accuratezza', 'Coerenza'].map(m => `
+                <tr style="border-bottom:1px solid var(--border)">
+                  <td style="padding:0.75rem;font-weight:500">${m}</td>
+                  <td style="text-align:center;padding:0.75rem;color:var(--text-light)">--</td>
+                  <td style="text-align:center;padding:0.75rem;color:var(--text-light)">--</td>
+                  <td style="text-align:center;padding:0.75rem;color:var(--text-light)">--</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="card fade-in">
+          <h3>Piano Strategico</h3>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+            <div>
+              <h4 style="margin-bottom:0.75rem">Roadmap Trimestrale</h4>
+              ${['Q1 - Fondamenta', 'Q2 - Crescita', 'Q3 - Ottimizzazione', 'Q4 - Consolidamento'].map(q => `
+                <div style="padding:0.75rem;background:var(--bg);border-radius:6px;border:1px solid var(--border);margin-bottom:0.5rem">
+                  <div style="font-weight:600;font-size:0.85rem">${q}</div>
+                  <div style="font-size:0.8rem;color:var(--text-light)">In attesa di analisi...</div>
+                </div>
+              `).join('')}
+            </div>
+            <div>
+              <h4 style="margin-bottom:0.75rem">Suggerimenti Schema.org</h4>
+              <div style="padding:1rem;background:var(--bg);border-radius:8px;border:1px solid var(--border)">
+                <div class="empty-state" style="font-size:0.85rem">Lancia l'audit per ricevere suggerimenti tecnici Schema.org.</div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -390,14 +845,59 @@ const App = {
 
   pageAiPromptTracker() {
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.zap}</div>
-          <h2>AI Prompt Tracker</h2>
-          <p class="tool-desc">Monitora come il tuo brand viene menzionato nelle risposte dei motori AI.</p>
-          <input type="text" class="tool-input" placeholder="Nome brand o dominio" />
-          <input type="text" class="tool-input" placeholder="Keywords da monitorare (separate da virgola)" />
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Avvia Monitoraggio</button>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.zap} AI Prompt Tracker</h1>
+          <p>Verifica se il brand &egrave; considerato una fonte autorevole nelle risposte AI.</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Dominio Web</h3>
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" class="tool-input" id="prompt-tracker-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
+            <button class="btn btn-dark" onclick="alert('Tracking in elaborazione...')">Avvia Tracking</button>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+          <div class="card fade-in fade-in-delay-2">
+            <h3>Citation Score</h3>
+            <div style="text-align:center;padding:2rem">
+              <div style="font-size:3.5rem;font-weight:700;color:var(--primary)">--</div>
+              <div style="font-size:0.9rem;color:var(--text-light)">Punteggio basato su frequenza e qualit&agrave; delle citazioni</div>
+              <div style="margin-top:1rem;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+                <div style="height:100%;width:0%;background:var(--gradient-bar);border-radius:4px"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="card fade-in fade-in-delay-2">
+            <h3>Sentiment Citazione</h3>
+            <div style="text-align:center;padding:2rem">
+              <div style="font-size:1.5rem;font-weight:600;color:var(--text-light)">--</div>
+              <div style="font-size:0.85rem;color:var(--text-light);margin-top:0.5rem">Analisi del tono delle menzioni (positivo / neutro / negativo)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-3">
+          <h3>Query Generate &amp; Citazioni</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Reverse engineering: query settoriali testate per verificare la citazione del brand.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border)">
+                <th style="text-align:left;padding:0.75rem">#</th>
+                <th style="text-align:left;padding:0.75rem">Query Generata</th>
+                <th style="text-align:center;padding:0.75rem">Stato</th>
+                <th style="text-align:center;padding:0.75rem">Sentiment</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia il tracking per visualizzare i risultati.</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     `;
@@ -405,13 +905,52 @@ const App = {
 
   pageAiOverview() {
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.eye}</div>
-          <h2>AI Overview</h2>
-          <p class="tool-desc">Panoramica completa della presenza del tuo brand negli AI Overview di Google.</p>
-          <input type="text" class="tool-input" placeholder="iltuosito.it" />
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Analizza AI Overview</button>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.eye} AI Overview Tracker (SGE)</h1>
+          <p>Ottimizzazione per gli snapshot AI di Google (Search Generative Experience).</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Dominio Web</h3>
+          <div style="display:flex;gap:0.5rem">
+            <input type="text" class="tool-input" id="aio-domain" style="margin-bottom:0;flex:1" placeholder="Es. iltuosito.it" />
+            <button class="btn btn-dark" onclick="alert('Analisi AI Overview in elaborazione...')">Analizza AI Overview</button>
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-2">
+          <h3>Analisi Keyword &amp; Win Probability</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Keyword ad alto volume che attivano risposte AI con probabilit&agrave; di apparire nello snapshot.</p>
+          <table style="width:100%;border-collapse:collapse;font-size:0.9rem">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border)">
+                <th style="text-align:left;padding:0.75rem">Keyword</th>
+                <th style="text-align:center;padding:0.75rem">Volume</th>
+                <th style="text-align:center;padding:0.75rem">Win Probability</th>
+                <th style="text-align:center;padding:0.75rem">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="4" style="padding:2rem;text-align:center;color:var(--text-light)">Lancia l'analisi per visualizzare le keyword.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+          <div class="card fade-in fade-in-delay-3">
+            <h3>Content Gap</h3>
+            <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Elementi mancanti nella pagina per migliorare la visibilit&agrave; AI.</p>
+            <div class="empty-state">Lancia l'analisi per identificare i content gap (es. Tabelle prezzi, Liste puntate, FAQ).</div>
+          </div>
+
+          <div class="card fade-in fade-in-delay-3">
+            <h3>Actionable Fixes</h3>
+            <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Suggerimenti pratici di modifica content per migliorare il posizionamento.</p>
+            <div class="empty-state">Lancia l'analisi per ricevere suggerimenti correttivi.</div>
+          </div>
         </div>
       </div>
     `;
@@ -419,13 +958,63 @@ const App = {
 
   pageVectorCheck() {
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.checkCircle}</div>
-          <h2>Vector Check</h2>
-          <p class="tool-desc">Verifica la rappresentazione vettoriale del tuo brand nei database AI.</p>
-          <input type="text" class="tool-input" placeholder="iltuosito.it o nome brand" />
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Verifica Vettori</button>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.checkCircle} Vector Check (Analisi Semantica)</h1>
+          <p>Analisi tecnica degli embeddings e della rilevanza vettoriale del contenuto.</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Input Analisi</h3>
+          <div class="form-group">
+            <label>URL Specifica</label>
+            <input type="text" class="tool-input" id="vc-url" placeholder="https://www.esempio.it/pagina-da-analizzare" />
+          </div>
+          <div class="form-group">
+            <label>Keyword Target</label>
+            <input type="text" class="tool-input" id="vc-keyword" placeholder="Es. consulenza digitale per PMI" />
+          </div>
+          <button class="btn btn-dark btn-block" onclick="alert('Analisi vettoriale in elaborazione...')">Avvia Vector Check</button>
+        </div>
+
+        <div class="card fade-in fade-in-delay-2">
+          <h3>Semantic Relevance Score</h3>
+          <div style="text-align:center;padding:2rem">
+            <div style="font-size:4rem;font-weight:700;color:var(--primary)">--</div>
+            <div style="font-size:0.9rem;color:var(--text-light)">Punteggio di vicinanza semantica tra contenuto e query</div>
+            <div style="margin-top:1.5rem;height:12px;background:var(--border);border-radius:6px;overflow:hidden;max-width:400px;margin-left:auto;margin-right:auto">
+              <div style="height:100%;width:0%;background:var(--gradient-bar);border-radius:6px;transition:width 0.5s"></div>
+            </div>
+            <div style="display:flex;justify-content:space-between;max-width:400px;margin:0.5rem auto 0;font-size:0.75rem;color:var(--text-light)">
+              <span>Bassa rilevanza</span>
+              <span>Alta rilevanza</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-3">
+          <h3>Analisi Vettoriale</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Simulazione di come un database vettoriale indicizzerebbe il contenuto della pagina.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
+            <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center">
+              <div style="font-size:0.75rem;text-transform:uppercase;color:var(--text-light);margin-bottom:0.5rem">Densit&agrave; Semantica</div>
+              <div style="font-size:1.5rem;font-weight:700;color:var(--text)">--</div>
+            </div>
+            <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center">
+              <div style="font-size:0.75rem;text-transform:uppercase;color:var(--text-light);margin-bottom:0.5rem">Embedding Distance</div>
+              <div style="font-size:1.5rem;font-weight:700;color:var(--text)">--</div>
+            </div>
+            <div style="padding:1.25rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center">
+              <div style="font-size:0.75rem;text-transform:uppercase;color:var(--text-light);margin-bottom:0.5rem">Cluster Match</div>
+              <div style="font-size:1.5rem;font-weight:700;color:var(--text)">--</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card fade-in">
+          <h3>Consigli di Ottimizzazione</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Suggerimenti per migliorare la densit&agrave; semantica senza keyword stuffing.</p>
+          <div class="empty-state">Avvia il Vector Check per ricevere consigli personalizzati.</div>
         </div>
       </div>
     `;
@@ -593,106 +1182,300 @@ const App = {
   },
 
   pageWizardPost() {
+    const ws = this.wizardState;
+    const platforms = [
+      { id: 'linkedin', label: 'LinkedIn', icon: ICONS.linkedin },
+      { id: 'facebook', label: 'Facebook', icon: ICONS.facebook },
+      { id: 'instagram', label: 'Instagram', icon: ICONS.instagram },
+      { id: 'youtube', label: 'YouTube', icon: ICONS.eye },
+      { id: 'pinterest', label: 'Pinterest', icon: ICONS.palette },
+      { id: 'gmb', label: 'Google My Business', icon: ICONS.globe }
+    ];
+    const objectives = ['Awareness', 'Engagement', 'Conversion', 'Educational'];
+    const frameworks = [
+      { id: 'hero', label: "Viaggio dell'Eroe" },
+      { id: 'pas', label: 'PAS (Problem-Agitation-Solution)' },
+      { id: 'bab', label: 'Before-After-Bridge' },
+      { id: 'cliff', label: 'Cliffhanger' }
+    ];
+
+    const stepIndicator = `
+      <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:2rem">
+        ${[1,2,3,4].map(s => `
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:0.25rem">
+            <div style="width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:0.85rem;${ws.step >= s ? 'background:var(--primary);color:white' : 'background:var(--border);color:var(--text-light)'}">${s}</div>
+            <span style="font-size:0.7rem;color:${ws.step >= s ? 'var(--primary)' : 'var(--text-light)'}">${['Obiettivo','Target','Contenuto','Risultato'][s-1]}</span>
+          </div>
+          ${s < 4 ? `<div style="flex:2;height:2px;background:${ws.step > s ? 'var(--primary)' : 'var(--border)'};margin-top:-1rem"></div>` : ''}
+        `).join('')}
+      </div>
+    `;
+
+    let stepContent = '';
+    if (ws.step === 1) {
+      stepContent = `
+        <h3>Step 1: Definizione Obiettivo</h3>
+        <div class="form-group">
+          <label>Piattaforma</label>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem">
+            ${platforms.map(p => `
+              <button class="btn ${ws.platform === p.id ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.platform='${p.id}';App.renderApp()" style="gap:0.3rem">
+                ${p.label}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+        <div class="form-group" style="margin-top:1rem">
+          <label>Obiettivo</label>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem">
+            ${objectives.map(o => `
+              <button class="btn ${ws.objective === o.toLowerCase() ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.objective='${o.toLowerCase()}';App.renderApp()">
+                ${o}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    } else if (ws.step === 2) {
+      stepContent = `
+        <h3>Step 2: Target &amp; Context</h3>
+        <div class="form-group">
+          <label>Buyer Persona</label>
+          <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem">Seleziona o descrivi la persona target. L'AI adatter&agrave; tono e linguaggio.</p>
+          <select class="tool-input" onchange="App.wizardState.persona=this.value">
+            <option value="" ${!ws.persona ? 'selected' : ''}>-- Seleziona Persona --</option>
+            <option value="manager" ${ws.persona === 'manager' ? 'selected' : ''}>Manager / Decision Maker</option>
+            <option value="tecnico" ${ws.persona === 'tecnico' ? 'selected' : ''}>Tecnico / Sviluppatore</option>
+            <option value="imprenditore" ${ws.persona === 'imprenditore' ? 'selected' : ''}>Imprenditore / Startup</option>
+            <option value="studente" ${ws.persona === 'studente' ? 'selected' : ''}>Studente / Junior</option>
+            <option value="custom" ${ws.persona === 'custom' ? 'selected' : ''}>Personalizzata</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Adattamento Tono</label>
+          <p style="font-size:0.8rem;color:var(--text-light)">Il tono verr&agrave; adattato in base alla persona selezionata e alle impostazioni del Brand Voice Engine nella Scheda Cliente.</p>
+        </div>
+      `;
+    } else if (ws.step === 3) {
+      stepContent = `
+        <h3>Step 3: Input Creativo</h3>
+        <div class="form-group">
+          <label>Topic / Argomento</label>
+          <input type="text" class="tool-input" value="${ws.topic}" oninput="App.wizardState.topic=this.value" placeholder="Es. Come aumentare le vendite online" />
+        </div>
+        <div class="form-group">
+          <label>Contesto (link, note)</label>
+          <textarea class="tool-textarea" oninput="App.wizardState.context=this.value" placeholder="Aggiungi link, note o contesto aggiuntivo...">${ws.context}</textarea>
+        </div>
+        <div class="form-group">
+          <label>Storytelling Framework</label>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+            ${frameworks.map(f => `
+              <button class="btn ${ws.framework === f.id ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="App.wizardState.framework='${f.id}';App.renderApp()">
+                ${f.label}
+              </button>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    } else {
+      stepContent = `
+        <h3>Step 4: Risultato &amp; Azioni</h3>
+        <div class="form-group">
+          <label>Testo Generato</label>
+          <textarea class="tool-textarea" style="min-height:200px" oninput="App.wizardState.generatedText=this.value" placeholder="Il testo generato apparir&agrave; qui dopo la generazione...">${ws.generatedText}</textarea>
+        </div>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+          <button class="btn btn-primary" onclick="alert('Generazione testo con Anti-AI Layer in corso...')">Genera Testo</button>
+          <button class="btn btn-outline" onclick="alert('Generazione variante in corso...')">Genera Variante</button>
+          <button class="btn btn-outline" onclick="App.copyToClipboard(App.wizardState.generatedText)">Copia</button>
+          <button class="btn btn-outline" onclick="alert('Generazione prompt immagine in corso...')">Genera Immagine</button>
+        </div>
+      `;
+    }
+
     return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.edit}</div>
-          <h2>Wizard Post</h2>
-          <p class="tool-desc">Genera post ottimizzati per tutti i social media con un solo click.</p>
-          <input type="text" class="tool-input" placeholder="Argomento del post" />
-          <textarea class="tool-textarea" placeholder="Descrivi il contenuto che vuoi comunicare..."></textarea>
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Genera Post</button>
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${ICONS.edit} Wizard Post</h1>
+          <p>Processo guidato in 4 step per generare contenuti social Human-Oriented.</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          ${stepIndicator}
+          ${stepContent}
+          <div style="display:flex;justify-content:space-between;margin-top:1.5rem">
+            <button class="btn btn-ghost" ${ws.step === 1 ? 'disabled style="opacity:0.5"' : ''} onclick="App.wizardPrev()">Indietro</button>
+            ${ws.step < 4 ? `<button class="btn btn-primary" onclick="App.wizardNext()">Avanti</button>` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  },
+
+  renderSocialPage(platform, platformLabel, platformIcon) {
+    const tones = ['Professionale', 'Informale', 'Motivazionale', 'Educativo', 'Umoristico'];
+    const frameworks = [
+      { id: 'hero', label: "Viaggio dell'Eroe" },
+      { id: 'pas', label: 'PAS' },
+      { id: 'bab', label: 'Before-After-Bridge' },
+      { id: 'cliff', label: 'Cliffhanger' }
+    ];
+
+    return `
+      <div class="fade-in">
+        <div class="dash-header">
+          <h1>${platformIcon} ${platformLabel}</h1>
+          <p>Genera contenuti ottimizzati per ${platformLabel} con intelligenza artificiale.</p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+          <div>
+            <div class="card">
+              <h3>Configurazione Post</h3>
+              <div class="form-group">
+                <label>Argomento / Topic</label>
+                <input type="text" class="tool-input" placeholder="Es. Come aumentare l'engagement" />
+              </div>
+              <div class="form-group">
+                <label>Contenuto / Contesto</label>
+                <textarea class="tool-textarea" placeholder="Descrivi il contenuto che vuoi comunicare, aggiungi link o note..."></textarea>
+              </div>
+              <div class="form-group">
+                <label>Tono</label>
+                <select class="tool-input">
+                  ${tones.map(t => `<option>${t}</option>`).join('')}
+                </select>
+              </div>
+              <div class="form-group">
+                <label>Storytelling Framework</label>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                  ${frameworks.map(f => `
+                    <button class="btn btn-outline btn-sm">${f.label}</button>
+                  `).join('')}
+                </div>
+              </div>
+              <button class="btn btn-dark btn-block" onclick="alert('Generazione post ${platformLabel} in corso...')">Genera Post ${platformLabel}</button>
+            </div>
+          </div>
+
+          <div>
+            <div class="card" style="min-height:400px">
+              <h3>Output Generato</h3>
+              <textarea class="tool-textarea" style="min-height:250px" placeholder="Il post generato apparir&agrave; qui..."></textarea>
+              <div style="display:flex;gap:0.5rem;margin-top:0.5rem">
+                <button class="btn btn-outline btn-sm" onclick="alert('Generazione variante...')">Genera Variante</button>
+                <button class="btn btn-outline btn-sm" onclick="alert('Copiato!')">Copia</button>
+                <button class="btn btn-outline btn-sm" onclick="alert('Generazione immagine...')">Genera Immagine</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `;
   },
 
   pageLinkedin() {
-    return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.linkedin}</div>
-          <h2>LinkedIn</h2>
-          <p class="tool-desc">Crea post professionali ottimizzati per LinkedIn con AI.</p>
-          <input type="text" class="tool-input" placeholder="Argomento" />
-          <textarea class="tool-textarea" placeholder="Di cosa vuoi parlare nel tuo post LinkedIn?"></textarea>
-          <select class="tool-input" style="margin-bottom:1rem"><option>Tono Professionale</option><option>Tono Informale</option><option>Tono Motivazionale</option></select>
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Genera Post LinkedIn</button>
-        </div>
-      </div>
-    `;
+    return this.renderSocialPage('linkedin', 'LinkedIn', ICONS.linkedin);
   },
 
   pageFacebook() {
-    return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.facebook}</div>
-          <h2>Facebook</h2>
-          <p class="tool-desc">Genera contenuti coinvolgenti per Facebook con intelligenza artificiale.</p>
-          <input type="text" class="tool-input" placeholder="Argomento del post" />
-          <textarea class="tool-textarea" placeholder="Descrivi il contenuto che vuoi pubblicare..."></textarea>
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Genera Post Facebook</button>
-        </div>
-      </div>
-    `;
+    return this.renderSocialPage('facebook', 'Facebook', ICONS.facebook);
   },
 
   pageInstagram() {
-    return `
-      <div class="tool-page fade-in">
-        <div class="tool-card">
-          <div class="tool-icon">${ICONS.instagram}</div>
-          <h2>Instagram</h2>
-          <p class="tool-desc">Crea caption e hashtag ottimizzati per Instagram con AI.</p>
-          <input type="text" class="tool-input" placeholder="Argomento" />
-          <textarea class="tool-textarea" placeholder="Descrivi la tua immagine o il contenuto..."></textarea>
-          <button class="btn btn-dark btn-block" onclick="alert('Funzionalit&agrave; in arrivo!')">Genera Caption Instagram</button>
-        </div>
-      </div>
-    `;
+    return this.renderSocialPage('instagram', 'Instagram', ICONS.instagram);
   },
 
   pageImpostazioni() {
-    const plan = this.subscription?.plan || "free";
-    const planLabel = plan === "free" ? "Free" : plan === "pro" ? "Professional" : "Enterprise";
-    const name = this.user.firstName || this.user.email || "Utente";
+    const ss = this.settingsState;
 
     return `
       <div class="fade-in">
-        <div class="dash-header"><h1>Impostazioni</h1><p>Gestisci il tuo account e le preferenze</p></div>
-        <div class="card">
-          <h3>Profilo</h3>
+        <div class="dash-header">
+          <h1>${ICONS.settings} Impostazioni &amp; Configurazione</h1>
+          <p>Hub centrale per la gestione tecnica, economica e dei dati dell'applicazione.</p>
+        </div>
+
+        <div class="card fade-in fade-in-delay-1">
+          <h3>Gestione API Key (Multi-Provider)</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Le chiavi sono salvate solo nel localStorage del browser. Non vengono mai inviate a server terzi.</p>
+
           <div class="form-group">
-            <label>Nome</label>
-            <input type="text" value="${name}" disabled />
+            <label>Google Gemini <span style="color:var(--danger);font-size:0.8rem">(Obbligatorio)</span></label>
+            <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem">Motore principale per tutte le analisi e generazioni.</p>
+            <div style="display:flex;gap:0.5rem">
+              <input type="password" class="tool-input" style="margin-bottom:0;flex:1" value="${ss.geminiKey}" oninput="App.settingsState.geminiKey=this.value" placeholder="Inserisci API Key Google Gemini" />
+              <button class="btn btn-outline btn-sm" onclick="alert(App.settingsState.geminiKey ? 'Verifica chiave Gemini in corso...' : 'Inserisci prima la chiave API')">Verifica</button>
+            </div>
           </div>
+
           <div class="form-group">
-            <label>Email</label>
-            <input type="text" value="${this.user.email || ''}" disabled />
+            <label>OpenAI <span style="color:var(--text-light);font-size:0.8rem">(Opzionale)</span></label>
+            <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem">Usato nel modulo AEO per simulare risposte ChatGPT reali.</p>
+            <div style="display:flex;gap:0.5rem">
+              <input type="password" class="tool-input" style="margin-bottom:0;flex:1" value="${ss.openaiKey}" oninput="App.settingsState.openaiKey=this.value" placeholder="Inserisci API Key OpenAI (opzionale)" />
+              <button class="btn btn-outline btn-sm" onclick="alert(App.settingsState.openaiKey ? 'Verifica chiave OpenAI in corso...' : 'Inserisci prima la chiave API')">Verifica</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Perplexity <span style="color:var(--text-light);font-size:0.8rem">(Opzionale)</span></label>
+            <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem">Usato nel modulo AEO e GEO per recuperare dati live dal web e fonti internazionali.</p>
+            <div style="display:flex;gap:0.5rem">
+              <input type="password" class="tool-input" style="margin-bottom:0;flex:1" value="${ss.perplexityKey}" oninput="App.settingsState.perplexityKey=this.value" placeholder="Inserisci API Key Perplexity (opzionale)" />
+              <button class="btn btn-outline btn-sm" onclick="alert(App.settingsState.perplexityKey ? 'Verifica chiave Perplexity in corso...' : 'Inserisci prima la chiave API')">Verifica</button>
+            </div>
           </div>
         </div>
-        <div class="card">
-          <h3>Abbonamento</h3>
-          <div class="plan-banner" style="margin-bottom:1.5rem">
-            <div><div class="plan-name">Piano ${planLabel}</div></div>
-            <div class="plan-badge">&bull; Attivo</div>
+
+        <div class="card fade-in fade-in-delay-2">
+          <h3>Configurazione Costi (FinOps)</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Sistema per stimare i costi di utilizzo delle API in tempo reale.</p>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:1rem">
+            <div class="form-group">
+              <label>Costo per 1M Token Input (&euro;)</label>
+              <input type="number" class="tool-input" value="${ss.costInput}" oninput="App.settingsState.costInput=this.value" step="0.01" min="0" />
+            </div>
+            <div class="form-group">
+              <label>Costo per 1M Token Output (&euro;)</label>
+              <input type="number" class="tool-input" value="${ss.costOutput}" oninput="App.settingsState.costOutput=this.value" step="0.01" min="0" />
+            </div>
+            <div class="form-group">
+              <label>Costo per Ricerca (&euro;)</label>
+              <input type="number" class="tool-input" value="${ss.costSearch}" oninput="App.settingsState.costSearch=this.value" step="0.01" min="0" />
+            </div>
           </div>
-          <div class="pricing-grid" style="margin-top:1rem">
-            ${this.plans.map(p => `
-              <div class="pricing-card ${p.id === 'pro' ? 'popular' : ''} ${p.id === plan ? '' : ''}">
-                ${p.id === 'pro' ? '<div class="pricing-badge">Pi&ugrave; Popolare</div>' : ''}
-                ${p.id === plan ? '<div class="pricing-badge" style="background:var(--success)">Attuale</div>' : ''}
-                <h3>${p.name}</h3>
-                <div class="pricing-price">&euro;${p.price}<span>/mese</span></div>
-                <ul class="pricing-features">${p.features.map(f => `<li>${f}</li>`).join('')}</ul>
-                <button class="btn ${p.id === plan ? 'btn-ghost' : p.id === 'pro' ? 'btn-primary' : 'btn-outline'}"
-                  ${p.id === plan ? 'disabled' : ''}
-                  onclick="App.selectPlan('${p.id}')">
-                  ${p.id === plan ? 'Piano Attuale' : p.price === 0 ? 'Downgrade' : 'Scegli Piano'}
-                </button>
-              </div>
-            `).join('')}
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:1rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);margin-top:0.5rem">
+            <div>
+              <div style="font-size:0.8rem;color:var(--text-light);text-transform:uppercase">Spesa Totale Sessione</div>
+              <div style="font-size:2rem;font-weight:700;color:var(--primary)">&euro;${ss.totalSpent.toFixed(4)}</div>
+            </div>
+            <button class="btn btn-outline btn-sm" onclick="App.resetSpending()">Reset Contatore</button>
+          </div>
+        </div>
+
+        <div class="card fade-in fade-in-delay-3">
+          <h3>Knowledge Base &amp; Data Management</h3>
+          <p style="color:var(--text-light);font-size:0.85rem;margin-bottom:1rem">Gestisci la portabilit&agrave; dei dati del progetto.</p>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem">
+            <div style="padding:1.5rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center">
+              <h4 style="margin-bottom:0.5rem">Esporta Progetto</h4>
+              <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem">Scarica un file .json con profilo cliente, storico analisi e impostazioni (chiavi API escluse).</p>
+              <button class="btn btn-primary btn-sm" onclick="App.exportProject()">Esporta .JSON</button>
+            </div>
+            <div style="padding:1.5rem;background:var(--bg);border-radius:8px;border:1px solid var(--border);text-align:center">
+              <h4 style="margin-bottom:0.5rem">Importa Progetto</h4>
+              <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:1rem">Carica un file di backup per ripristinare lo stato su un altro dispositivo.</p>
+              <button class="btn btn-outline btn-sm" onclick="App.importProject()">Importa File</button>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label>Knowledge Base Editor</label>
+            <p style="font-size:0.8rem;color:var(--text-light);margin-bottom:0.5rem">Inserisci informazioni non strutturate (note, interviste, testi) che verranno iniettate come contesto in ogni prompt AI.</p>
+            <textarea class="tool-textarea" style="min-height:200px" oninput="App.clientData.knowledgeBase=this.value" placeholder="Incolla qui note, interviste, PDF convertiti in testo...">${this.clientData.knowledgeBase}</textarea>
           </div>
         </div>
       </div>
