@@ -4,6 +4,11 @@
 GEOAudit AI Intelligence is a SaaS web application for AI-powered brand perception analysis. It features user authentication, a full dashboard with dark sidebar navigation, subscription management, and multiple AI tools for SEO, AEO, content creation, and social media.
 
 ## Recent Changes
+- 2026-02-08: **Professional report redesign** - All 5 SEO report pages (GEO Audit, AEO Audit, AI Prompt Tracker, AI Overview, Vector Check) now have enterprise-grade layouts with branded headers, score displays, action bars, and per-report PDF export
+- 2026-02-08: Added AEO acronym description explaining Answer Engine Optimization
+- 2026-02-08: Added engine comparison cards for AEO with HIGH/MEDIUM/LOW badges, Strategic Blueprint sections, and Quarterly Execution Roadmap with impact badges
+- 2026-02-08: Added helper methods: reportBrandedHeader, reportActionBar, downloadReportPDF, resetReport, getMetricBadge
+- 2026-02-08: Updated AI prompts to include contentGaps, technicalFixes, contentSuggestions fields
 - 2026-02-08: **Major AI analysis upgrade** - All tools now scrape the real website (title, meta, headings, text content, Schema.org, OG tags) and pass real data to AI prompts
 - 2026-02-08: Upgraded to Gemini 2.5 Flash as primary LLM (only AEO Audit uses multi-engine with OpenAI + Perplexity)
 - 2026-02-08: Rewrote all AI prompts to produce domain-specific, data-driven results instead of generic/simulated outputs
