@@ -599,6 +599,158 @@ Genera SOLO il testo del post, senza spiegazioni aggiuntive.`;
   }
 });
 
+// Visual Studio - Image Generation
+router.post('/api/ai/visual-studio', isAuthenticated, async (req: Request, res: Response) => {
+  try {
+    const { prompt, lens, stile, formato, ora, settore, mode, scenarioImages } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Inserisci un prompt visivo' });
+    }
+
+    if (mode === 'dopo' && (!scenarioImages || scenarioImages.length === 0)) {
+      return res.status(400).json({ error: 'Carica almeno un\'immagine scenario per la modalità Prima/Dopo' });
+    }
+
+    if (scenarioImages && scenarioImages.length > 5) {
+      return res.status(400).json({ error: 'Massimo 5 immagini scenario consentite' });
+    }
+
+    if (scenarioImages) {
+      for (const img of scenarioImages) {
+        const sizeBytes = (img.length * 3) / 4;
+        if (sizeBytes > 10 * 1024 * 1024) {
+          return res.status(400).json({ error: 'Ogni immagine scenario deve essere inferiore a 10MB' });
+        }
+      }
+    }
+
+    const OpenAI = (await import('openai')).default;
+    const openai = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
+
+    const lensDescriptions: Record<string, string> = {
+      '23mm': '23mm wide angle lens, immersive perspective, expanded space, dynamic composition',
+      '33mm': '33mm lens, natural human-eye perspective, street photography style',
+      '55mm': '55mm standard lens, micro-contrast, sharp subject separation, circular bokeh',
+      '70mm': '70mm portrait lens, flattering compression, subject isolation, shallow depth of field',
+      '90mm': '90mm telephoto, extreme isolation, painterly background, very shallow depth of field',
+    };
+    
+    const oraDescriptions: Record<string, string> = {
+      'alba': 'dawn lighting, warm golden tones, low sun angle, soft shadows',
+      'mattina': 'morning light, bright natural daylight, clean shadows',
+      'mezzogiorno': 'midday sun, harsh overhead light, strong shadows',
+      'pomeriggio': 'afternoon light, warm directional light, medium shadows',
+      'golden': 'golden hour, warm orange/amber tones, long shadows, magical lighting',
+      'blue': 'blue hour, cool blue tones, twilight atmosphere, ambient glow',
+      'notte': 'nighttime, artificial lighting, dramatic shadows, urban glow',
+      'nuvoloso': 'overcast sky, diffused soft light, no harsh shadows, even illumination',
+    };
+
+    const stileDescriptions: Record<string, string> = {
+      'human-oriented-realism': 'photorealistic, human-centered composition, authentic feel, natural imperfections',
+      'cinematic': 'cinematic composition, dramatic lighting, film-like color grading, widescreen feel',
+      'editorial': 'editorial photography, clean composition, magazine-quality, sophisticated styling',
+      'minimal': 'minimalist composition, clean negative space, simple elements, understated elegance',
+      'dramatic': 'dramatic composition, high contrast, bold shadows, intense atmosphere',
+    };
+
+    const settoreContext = settore === 'auto' ? 'automotive context, cars, vehicles, roads, showroom' : 'home/interior context, residential, architecture, living spaces';
+
+    const sizeMap: Record<string, string> = {
+      '1:1': '1024x1024',
+      '16:9': '1536x1024',
+      '9:16': '1024x1536',
+      '4:3': '1536x1024',
+      '3:4': '1024x1536',
+    };
+    const size = sizeMap[formato] || '1024x1024';
+
+    const basePrompt = `Professional ${stileDescriptions[stile] || stile} photography. ${lensDescriptions[lens] || lens}. ${oraDescriptions[ora] || ora}. ${settoreContext}. Scene: ${prompt}. Ultra high quality, photorealistic, no text, no watermarks, no AI artifacts.`;
+
+    if (mode === 'prima' || !scenarioImages || scenarioImages.length === 0) {
+      const primaPrompt = `${basePrompt} Empty scene without any added objects or products - show only the environment/location/background as described.`;
+      
+      const response = await openai.images.generate({
+        model: 'gpt-image-1',
+        prompt: primaPrompt,
+        n: 1,
+        size: size as any,
+      });
+
+      const imageBase64 = (response.data as any)?.[0]?.b64_json || '';
+      res.json({ 
+        prima: imageBase64,
+        mode: 'prima'
+      });
+    } else {
+      const primaPrompt = `${basePrompt} Empty scene without any added objects or products - show only the environment/location/background as described.`;
+      
+      const primaResponse = await openai.images.generate({
+        model: 'gpt-image-1',
+        prompt: primaPrompt,
+        n: 1,
+        size: size as any,
+      });
+
+      const primaBase64 = (primaResponse.data as any)?.[0]?.b64_json || '';
+      
+      const fs = await import('fs');
+      const path = await import('path');
+      const os = await import('os');
+      const { randomUUID } = await import('crypto');
+      const { toFile } = await import('openai');
+      
+      const tmpDir = os.tmpdir();
+      const primaPath = path.join(tmpDir, `prima-${randomUUID()}.png`);
+      fs.writeFileSync(primaPath, Buffer.from(primaBase64, 'base64'));
+      
+      const scenarioPaths: string[] = [];
+      for (let i = 0; i < scenarioImages.length; i++) {
+        const imgPath = path.join(tmpDir, `scenario-${randomUUID()}.png`);
+        const imgData = scenarioImages[i].replace(/^data:image\/[a-z]+;base64,/, '');
+        fs.writeFileSync(imgPath, Buffer.from(imgData, 'base64'));
+        scenarioPaths.push(imgPath);
+      }
+      
+      const allImagePaths = [primaPath, ...scenarioPaths];
+      const imageFiles = await Promise.all(
+        allImagePaths.map(filePath => 
+          toFile(fs.createReadStream(filePath), path.basename(filePath), { type: 'image/png' })
+        )
+      );
+
+      const editPrompt = `Take the first image as the base scene. Integrate the objects/elements from the other reference images naturally into this exact same scene. ${prompt}. Maintain the same exact perspective, lighting (${oraDescriptions[ora] || ora}), and photographic style (${stileDescriptions[stile] || stile}). The result must look like a real photograph - photorealistic, natural integration, no visible editing artifacts.`;
+
+      const editResponse = await openai.images.edit({
+        model: 'gpt-image-1',
+        image: imageFiles,
+        prompt: editPrompt,
+        size: size as any,
+      });
+
+      const dopoBase64 = (editResponse.data as any)?.[0]?.b64_json || '';
+      
+      try {
+        fs.unlinkSync(primaPath);
+        scenarioPaths.forEach(p => fs.unlinkSync(p));
+      } catch (e) {}
+      
+      res.json({
+        prima: primaBase64,
+        dopo: dopoBase64,
+        mode: 'dopo'
+      });
+    }
+  } catch (e: any) {
+    console.error('Visual Studio error:', e);
+    res.status(500).json({ error: e.message || 'Errore nella generazione immagine' });
+  }
+});
+
 export function registerAiRoutes(app: any) {
   app.use(router);
 }

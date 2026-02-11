@@ -1575,6 +1575,11 @@ const App = {
     ora: 'mattina',
     mode: 'dopo',
     prompt: '',
+    scenarioImages: [],
+    primaResult: null,
+    dopoResult: null,
+    generating: false,
+    error: null,
   },
 
   vsLenses: [
@@ -1603,16 +1608,175 @@ const App = {
   vsSetOra(o) { this.vsState.ora = o; this.renderApp(); },
   vsToggleMode() { this.vsState.mode = this.vsState.mode === 'dopo' ? 'prima' : 'dopo'; this.renderApp(); },
 
+  vsAddScenarioImage() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.multiple = true;
+    input.onchange = (e) => {
+      const files = e.target.files;
+      for (const file of files) {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          this.vsState.scenarioImages.push(ev.target.result);
+          this.renderApp();
+        };
+        reader.readAsDataURL(file);
+      }
+    };
+    input.click();
+  },
+
+  vsRemoveScenarioImage(index) {
+    this.vsState.scenarioImages.splice(index, 1);
+    this.renderApp();
+  },
+
+  async vsRender() {
+    const s = this.vsState;
+    if (!s.prompt) { this.showToast('Inserisci un prompt visivo', 'warning'); return; }
+    
+    s.generating = true;
+    s.error = null;
+    s.primaResult = null;
+    s.dopoResult = null;
+    this.renderApp();
+    
+    try {
+      const body = {
+        prompt: s.prompt,
+        lens: s.lens,
+        stile: s.stile,
+        formato: s.formato,
+        ora: s.ora,
+        settore: s.settore,
+        mode: (s.mode === 'dopo' && s.scenarioImages.length > 0) ? 'dopo' : 'prima',
+        scenarioImages: s.scenarioImages,
+      };
+      
+      const res = await fetch('/api/ai/visual-studio', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(body),
+      });
+      
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Errore sconosciuto');
+      
+      s.primaResult = data.prima;
+      s.dopoResult = data.dopo || null;
+      s.generating = false;
+      this.renderApp();
+    } catch (e) {
+      s.generating = false;
+      s.error = e.message;
+      this.renderApp();
+    }
+  },
+
+  vsDownloadImage(type) {
+    const base64 = type === 'dopo' ? this.vsState.dopoResult : this.vsState.primaResult;
+    if (!base64) return;
+    
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `visual-studio-${type}-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }, 'image/png');
+    };
+    img.src = 'data:image/png;base64,' + base64;
+  },
+
+  vsReset() {
+    this.vsState.primaResult = null;
+    this.vsState.dopoResult = null;
+    this.vsState.error = null;
+    this.renderApp();
+  },
+
   pageVisualStudio() {
     const s = this.vsState;
     const oraLabel = this.vsOre.find(o => o.id === s.ora)?.label || 'Mattina';
+
+    const scenarioThumbs = s.scenarioImages.map((img, i) => `
+      <div class="vs-thumb">
+        <img src="${img}" alt="Scenario ${i+1}" />
+        <button class="vs-thumb-remove" onclick="App.vsRemoveScenarioImage(${i})">&times;</button>
+      </div>
+    `).join('');
+
+    const previewContent = s.generating 
+      ? `<div class="vs-preview-loading">
+          <div class="spinner"></div>
+          <div class="vs-preview-text">Generazione in corso...</div>
+          <div class="vs-preview-sub">L'AI sta creando la tua immagine fotorealistica.</div>
+        </div>`
+      : (s.primaResult || s.dopoResult)
+        ? `<div class="vs-results">
+            ${s.dopoResult ? `
+              <div class="vs-result-pair">
+                <div class="vs-result-item">
+                  <div class="vs-result-label">PRIMA</div>
+                  <img src="data:image/png;base64,${s.primaResult}" alt="Prima" class="vs-result-img" />
+                  <button class="btn btn-outline btn-sm" onclick="App.vsDownloadImage('prima')">Scarica Prima</button>
+                </div>
+                <div class="vs-result-item">
+                  <div class="vs-result-label">DOPO</div>
+                  <img src="data:image/png;base64,${s.dopoResult}" alt="Dopo" class="vs-result-img" />
+                  <button class="btn btn-primary btn-sm" onclick="App.vsDownloadImage('dopo')">Scarica Dopo</button>
+                </div>
+              </div>
+            ` : `
+              <div class="vs-result-single">
+                <img src="data:image/png;base64,${s.primaResult}" alt="Risultato" class="vs-result-img" />
+                <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+                  <button class="btn btn-primary btn-sm" onclick="App.vsDownloadImage('prima')">Scarica Immagine</button>
+                  <button class="btn btn-outline btn-sm" onclick="App.vsReset()">Nuova Generazione</button>
+                </div>
+              </div>
+            `}
+            ${s.dopoResult ? `<div style="text-align:center;margin-top:0.75rem"><button class="btn btn-outline btn-sm" onclick="App.vsReset()">Nuova Generazione</button></div>` : ''}
+          </div>`
+        : s.error 
+          ? `<div class="vs-preview-error">
+              <div class="vs-preview-text" style="color:#ef4444">Errore</div>
+              <div class="vs-preview-sub" style="color:#ef4444">${s.error}</div>
+              <button class="btn btn-outline btn-sm" onclick="App.vsReset()" style="margin-top:1rem">Riprova</button>
+            </div>`
+          : `<div class="vs-preview-placeholder">
+              <div class="vs-preview-icon">
+                <svg viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <circle cx="40" cy="40" r="35"/>
+                  <circle cx="40" cy="40" r="25"/>
+                  <circle cx="40" cy="40" r="15"/>
+                  <line x1="40" y1="5" x2="40" y2="15"/>
+                  <line x1="40" y1="65" x2="40" y2="75"/>
+                  <line x1="5" y1="40" x2="15" y2="40"/>
+                  <line x1="65" y1="40" x2="75" y2="40"/>
+                </svg>
+              </div>
+              <div class="vs-preview-text">Visual Studio Ready</div>
+              <div class="vs-preview-sub">Imposta i parametri e clicca Renderizza per generare.</div>
+            </div>`;
+
     return `
       <div class="vs-page fade-in">
         <div class="vs-header">
           <div class="vs-header-icon">${ICONS.palette}</div>
           <div>
             <h1>Visual Studio</h1>
-            <p>Motore di rendering fotorealistico con Virtual Lens Emulator.</p>
+            <p>Motore di rendering fotorealistico con Virtual Lens Emulator. Genera immagini Prima/Dopo con AI.</p>
           </div>
         </div>
 
@@ -1622,24 +1786,35 @@ const App = {
               <div class="vs-card-top">
                 <h3>Prompt Visivo</h3>
                 <div class="vs-mode-toggle">
-                  <span class="vs-mode-label">MODE: PRIMA/DOPO</span>
+                  <span class="vs-mode-label">MODE: ${s.mode === 'dopo' ? 'PRIMA/DOPO' : 'SOLO GENERAZIONE'}</span>
                   <button class="vs-toggle ${s.mode === 'dopo' ? 'active' : ''}" onclick="App.vsToggleMode()">
                     <span class="vs-toggle-knob"></span>
                   </button>
                 </div>
               </div>
-              <textarea class="vs-textarea" id="vs-prompt" placeholder="Descrivi la scena..." oninput="App.vsState.prompt=this.value">${s.prompt}</textarea>
+              <textarea class="vs-textarea" id="vs-prompt" placeholder="Descrivi la scena che vuoi generare... Es: Un soggiorno moderno con pavimento in parquet e grandi finestre panoramiche" oninput="App.vsState.prompt=this.value">${s.prompt}</textarea>
+              ${s.mode === 'dopo' ? '<p class="vs-mode-hint">In modalit&agrave; Prima/Dopo, l\'AI genera prima la scena base, poi integra le immagini scenario nella stessa scena.</p>' : ''}
             </div>
 
             <div class="vs-card">
-              <div class="vs-card-label">\u2728 SCENARIO REFERENCE (OPZIONALE)</div>
-              <div class="vs-upload-area">
-                <div class="vs-upload-icon">\u2601</div>
+              <div class="vs-card-label">&#x2728; SCENARIO REFERENCE ${s.mode === 'dopo' ? '(OBBLIGATORIO per Prima/Dopo)' : '(OPZIONALE)'}</div>
+              <div class="vs-upload-area" onclick="App.vsAddScenarioImage()">
+                <div class="vs-upload-icon">&#x2601;</div>
+                <div class="vs-upload-text">Clicca per caricare immagini di riferimento</div>
+                <div class="vs-upload-hint">PNG, JPG - Carica prodotti, mobili, oggetti da inserire nella scena</div>
               </div>
+              ${s.scenarioImages.length > 0 ? `
+                <div class="vs-thumbs-grid">
+                  ${scenarioThumbs}
+                  <div class="vs-thumb vs-thumb-add" onclick="App.vsAddScenarioImage()">
+                    <span>+</span>
+                  </div>
+                </div>
+              ` : ''}
             </div>
 
             <div class="vs-card">
-              <div class="vs-card-label">\u2699 VIRTUAL LENS EMULATOR</div>
+              <div class="vs-card-label">&#x2699; VIRTUAL LENS EMULATOR</div>
               <div class="vs-lens-list">
                 ${this.vsLenses.map(l => `
                   <div class="vs-lens-item ${s.lens === l.id ? 'active' : ''}" onclick="App.vsSetLens('${l.id}')">
@@ -1654,14 +1829,14 @@ const App = {
             </div>
 
             <div class="vs-card">
-              <div class="vs-card-label">\u2699 SCENE SETUP</div>
+              <div class="vs-card-label">&#x2699; SCENE SETUP</div>
 
               <div class="vs-setup-row">
                 <div class="vs-setup-col">
                   <div class="vs-setup-label">SETTORE</div>
                   <div class="vs-btn-group">
-                    <button class="vs-icon-btn ${s.settore === 'auto' ? 'active' : ''}" onclick="App.vsSetSettore('auto')" title="Automotive">\uD83D\uDE97</button>
-                    <button class="vs-icon-btn ${s.settore === 'casa' ? 'active' : ''}" onclick="App.vsSetSettore('casa')" title="Casa">\uD83C\uDFE0</button>
+                    <button class="vs-icon-btn ${s.settore === 'auto' ? 'active' : ''}" onclick="App.vsSetSettore('auto')" title="Automotive">&#x1F697;</button>
+                    <button class="vs-icon-btn ${s.settore === 'casa' ? 'active' : ''}" onclick="App.vsSetSettore('casa')" title="Casa">&#x1F3E0;</button>
                   </div>
                 </div>
                 <div class="vs-setup-col">
@@ -1686,7 +1861,7 @@ const App = {
                 `).join('')}
               </div>
 
-              <div class="vs-setup-label">\u2600 ORA DEL GIORNO</div>
+              <div class="vs-setup-label">&#x2600; ORA DEL GIORNO</div>
               <div class="vs-ora-group">
                 ${this.vsOre.map(o => `
                   <button class="vs-ora-btn ${s.ora === o.id ? 'active' : ''}" onclick="App.vsSetOra('${o.id}')">
@@ -1696,8 +1871,8 @@ const App = {
               </div>
             </div>
 
-            <button class="btn btn-primary btn-block vs-render-btn" onclick="alert('Renderizzazione in arrivo!')">
-              \u2728 Renderizza Asset
+            <button class="btn btn-primary btn-block vs-render-btn" onclick="App.vsRender()" ${s.generating ? 'disabled' : ''}>
+              ${s.generating ? '<div class="spinner" style="width:18px;height:18px;border-width:2px;margin-right:0.5rem"></div> Generazione...' : '&#x2728; Renderizza Asset'}
             </button>
           </div>
 
@@ -1705,22 +1880,11 @@ const App = {
             <div class="vs-preview-bar">
               <span>${s.lens.toUpperCase()}</span>
               <span>${s.formato}</span>
-              <span>${oraLabel} (Neutral)</span>
+              <span>${oraLabel}</span>
+              <span>${s.stile}</span>
             </div>
             <div class="vs-preview-area">
-              <div class="vs-preview-icon">
-                <svg viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <circle cx="40" cy="40" r="35"/>
-                  <circle cx="40" cy="40" r="25"/>
-                  <circle cx="40" cy="40" r="15"/>
-                  <line x1="40" y1="5" x2="40" y2="15"/>
-                  <line x1="40" y1="65" x2="40" y2="75"/>
-                  <line x1="5" y1="40" x2="15" y2="40"/>
-                  <line x1="65" y1="40" x2="75" y2="40"/>
-                </svg>
-              </div>
-              <div class="vs-preview-text">Visual Studio Ready</div>
-              <div class="vs-preview-sub">Carica reference o imposta i parametri per iniziare.</div>
+              ${previewContent}
             </div>
           </div>
         </div>
